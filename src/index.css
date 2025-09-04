@@ -1,0 +1,745 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Floating Menu Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.iso-pro {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+/* Glass morphism card - Original design */
+.card {
+  max-width: fit-content;
+  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  align-content: center;
+  justify-content: center;
+  gap: 1rem;
+  backdrop-filter: blur(15px);
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.192),
+    inset 0 0 5px rgba(255, 255, 255, 0.274), 0 5px 5px rgba(0, 0, 0, 0.164);
+  transition: 0.5s;
+}
+
+.card:hover {
+  animation: ease-out 5s;
+  background: rgba(173, 173, 173, 0.05);
+}
+
+.card ul {
+  padding: 1rem;
+  display: flex;
+  list-style: none;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  align-content: center;
+  flex-wrap: wrap;
+  flex-direction: row;
+}
+
+.card ul li {
+  cursor: pointer;
+}
+
+.svg {
+  transition: all 0.3s;
+  padding: 1rem;
+  height: 60px;
+  width: 60px;
+  border-radius: 100%;
+  color: rgb(255, 174, 0);
+  fill: currentColor;
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.3),
+    inset 0 0 5px rgba(255, 255, 255, 0.5), 0 5px 5px rgba(0, 0, 0, 0.164);
+}
+
+.text {
+  opacity: 0;
+  border-radius: 5px;
+  padding: 5px;
+  transition: all 0.3s;
+  color: rgb(255, 174, 0);
+  background-color: rgba(255, 255, 255, 0.3);
+  position: absolute;
+  z-index: 9999;
+  box-shadow: -5px 0 1px rgba(153, 153, 153, 0.2),
+    -10px 0 1px rgba(153, 153, 153, 0.2),
+    inset 0 0 20px rgba(255, 255, 255, 0.3),
+    inset 0 0 5px rgba(255, 255, 255, 0.5), 0 5px 5px rgba(0, 0, 0, 0.082);
+}
+
+/* Isometric projection */
+.iso-pro {
+  transition: 0.5s;
+}
+
+.iso-pro:hover a > .svg {
+  transform: translate(15px, -15px);
+  border-radius: 100%;
+}
+
+.iso-pro:hover .text {
+  opacity: 1;
+  transform: translate(25px, -2px) skew(-5deg);
+}
+
+.iso-pro:hover .svg {
+  transform: translate(5px, -5px);
+}
+
+.iso-pro span {
+  opacity: 0;
+  position: absolute;
+  color: #1877f2;
+  border-color: #1877f2;
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.3),
+    inset 0 0 5px rgba(255, 255, 255, 0.5), 0 5px 5px rgba(0, 0, 0, 0.164);
+  border-radius: 50%;
+  transition: all 0.3s;
+  height: 60px;
+  width: 60px;
+}
+
+.iso-pro:hover span {
+  opacity: 1;
+}
+
+.iso-pro:hover span:nth-child(1) {
+  opacity: 0.2;
+}
+
+.iso-pro:hover span:nth-child(2) {
+  opacity: 0.4;
+  transform: translate(5px, -5px);
+}
+
+.iso-pro:hover span:nth-child(3) {
+  opacity: 0.6;
+  transform: translate(10px, -10px);
+}
+
+.iso-pro:hover .svg {
+  transform: translate(5px, -5px);
+}
+
+.iso-pro span {
+  opacity: 0;
+  position: absolute;
+  color: #3b82f6; /* Blue color */
+  border-color: #3b82f6;
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.3),
+    inset 0 0 5px rgba(255, 255, 255, 0.5), 0 5px 5px rgba(0, 0, 0, 0.164);
+  border-radius: 50%;
+  transition: all 0.3s;
+  height: 60px;
+  width: 60px;
+  top: 0;
+  left: 0;
+}
+
+.iso-pro:hover span {
+  opacity: 1;
+}
+
+.iso-pro:hover span:nth-child(1) {
+  opacity: 0.2;
+}
+
+.iso-pro:hover span:nth-child(2) {
+  opacity: 0.4;
+  transform: translate(5px, -5px);
+}
+
+.iso-pro:hover span:nth-child(3) {
+  opacity: 0.6;
+  transform: translate(10px, -10px);
+}
+
+/* Barbearia Confallony Design System - Dark, Professional Theme */
+
+@layer base {
+  :root {
+    /* Tema Claro - Fundo branco, textos pretos, bordas visíveis */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+
+    --primary: 192 100% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 0 0% 9%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 192 85% 35%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 32% 75%;
+    --input: 214 32% 91%;
+    --ring: 192 100% 45%;
+
+    /* Barbershop Specific Colors */
+    --barbershop-gold: 45 95% 68%;
+    --barbershop-gold-foreground: 210 24% 8%;
+    --barbershop-dark: 210 30% 6%;
+    --barbershop-highlight: 192 100% 60%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(192 100% 45%), hsl(192 100% 60%));
+    --gradient-dark: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 30% 6%));
+    --gradient-gold: linear-gradient(135deg, hsl(45 95% 68%), hsl(45 85% 58%));
+
+    /* Effects */
+    --shadow-elegant: 0 10px 30px -10px hsl(192 100% 45% / 0.3);
+    --shadow-glow: 0 0 40px hsl(192 100% 60% / 0.2);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --radius: 0.75rem;
+
+    /* Sidebar (tema claro) */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5% 26%;
+    --sidebar-primary: 240 6% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 240 6% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    /* Tema Escuro - Preto profundo */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 192 100% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+
+    --accent: 192 85% 35%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 192 100% 45%;
+
+    /* Sidebar (tema escuro) */
+    --sidebar-background: 240 6% 10%;
+    --sidebar-foreground: 240 5% 96%;
+    --sidebar-primary: 224 76% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4% 16%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-border: 240 4% 16%;
+    --sidebar-ring: 217 91% 60%;
+
+    /* Gradientes para tema escuro */
+    --gradient-primary: linear-gradient(135deg, hsl(192 100% 45%), hsl(192 100% 60%));
+    --gradient-dark: linear-gradient(180deg, hsl(0 0% 0%), hsl(210 30% 6%));
+    --gradient-gold: linear-gradient(135deg, hsl(45 95% 68%), hsl(45 85% 58%));
+
+    /* Effects para tema escuro */
+    --shadow-elegant: 0 10px 30px -10px hsl(192 100% 45% / 0.3);
+    --shadow-glow: 0 0 40px hsl(192 100% 60% / 0.2);
+  }
+
+  .purple {
+    /* Tema Roxo - Fundo slate-950 */
+    --background: 222 84% 5%;
+    --foreground: 0 0% 100%;
+
+    --card: 222 84% 5%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 222 84% 5%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 271 91% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 84% 10%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 222 84% 10%;
+    --muted-foreground: 0 0% 64%;
+
+    --accent: 271 81% 56%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 84% 15%;
+    --input: 222 84% 15%;
+    --ring: 271 91% 65%;
+
+    /* Barbershop Specific Colors para tema roxo */
+    --barbershop-gold: 45 95% 68%;
+    --barbershop-gold-foreground: 222 84% 5%;
+    --barbershop-dark: 222 84% 5%;
+    --barbershop-highlight: 271 91% 75%;
+
+    /* Sidebar (tema roxo) */
+    --sidebar-background: 222 84% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 271 91% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 84% 12%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 222 84% 12%;
+    --sidebar-ring: 271 91% 65%;
+
+    /* Gradientes para tema roxo */
+    --gradient-primary: linear-gradient(135deg, hsl(271 91% 65%), hsl(271 91% 75%));
+    --gradient-dark: linear-gradient(180deg, hsl(222 84% 5%), hsl(222 84% 8%));
+    --gradient-gold: linear-gradient(135deg, hsl(45 95% 68%), hsl(45 85% 58%));
+
+    /* Effects para tema roxo */
+    --shadow-elegant: 0 10px 30px -10px hsl(271 91% 65% / 0.3);
+    --shadow-glow: 0 0 40px hsl(271 91% 75% / 0.2);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-inter;
+    /* Ocultar scrollbars em todos os navegadores mantendo funcionalidade */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* Internet Explorer 10+ */
+  }
+
+  /* Ocultar scrollbar no Webkit (Chrome, Safari) */
+  body::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Ocultar scrollbars globalmente mantendo funcionalidade */
+  * {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* Internet Explorer 10+ */
+  }
+
+  /* Ocultar scrollbar no Webkit para todos os elementos */
+  *::-webkit-scrollbar {
+    display: none;
+  }
+
+  h1, h2, h4, h5, h6 {
+    @apply font-bold;
+  }
+
+  h3 {
+    @apply font-bold;
+  }
+}
+
+@layer components {
+  /* Hero Section Styles */
+  .hero-gradient {
+    background: var(--gradient-primary);
+  }
+
+  .barbershop-card {
+    @apply bg-card border border-border rounded-lg p-6 shadow-lg;
+    box-shadow: var(--shadow-elegant);
+  }
+
+  /* Button Variants */
+  .btn-hero {
+    background: var(--gradient-primary);
+    @apply text-primary-foreground font-semibold px-8 py-3 rounded-lg transition-all duration-300;
+    box-shadow: var(--shadow-elegant);
+  }
+
+  .btn-hero:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .btn-gold {
+    background: var(--gradient-gold);
+    @apply text-barbershop-gold-foreground font-semibold px-6 py-3 rounded-lg transition-all duration-300;
+  }
+
+  /* Service Card Animation */
+  .service-card {
+    @apply transform transition-all duration-300 hover:scale-105;
+  }
+
+  /* Navbar Glass Effect */
+  .navbar-glass {
+    @apply backdrop-blur-md bg-background/80 border-b border-border/50;
+  }
+
+  /* Text Glow Effect */
+  .text-glow {
+    text-shadow: 0 0 20px hsl(192 100% 60% / 0.5);
+  }
+
+  /* Mobile Responsive Utilities */
+  .mobile-padding {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+
+  .mobile-text {
+    @apply text-sm sm:text-base;
+  }
+
+  .mobile-heading {
+    @apply text-xl sm:text-2xl lg:text-3xl;
+  }
+
+  .mobile-button {
+    @apply w-full sm:w-auto px-4 py-2 sm:px-6 sm:py-3;
+  }
+
+  .mobile-card {
+    @apply p-3 sm:p-4 lg:p-6;
+  }
+
+  .mobile-grid {
+    @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  /* Extra small breakpoint utilities */
+  @media (min-width: 375px) {
+    .xs\:hidden {
+      display: none;
+    }
+    
+    .xs\:inline {
+      display: inline;
+    }
+    
+    .xs\:block {
+      display: block;
+    }
+  }
+
+  /* Hide on mobile, show on desktop */
+  .desktop-only {
+    @apply hidden lg:block;
+  }
+
+  /* Show only on mobile */
+  .mobile-only {
+    @apply block lg:hidden;
+  }
+
+  /* Tablet and up */
+  .tablet-up {
+    @apply hidden sm:block;
+  }
+  
+  /* Line clamp utilities */
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Shine Effect */
+  .shine {
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.3);
+    background: linear-gradient(
+      -40deg,
+      transparent 0%,
+      transparent 35%,
+      #222 50%,
+      transparent 65%,
+      transparent 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shine-animation 4s infinite ease-in-out;
+    display: inline-block;
+  }
+
+  /* Tema claro */
+  :root .shine {
+    color: rgba(0, 0, 0, 0.8);
+    background: linear-gradient(
+      -40deg,
+      transparent 0%,
+      transparent 35%,
+      #fff 50%,
+      transparent 65%,
+      transparent 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Tema escuro */
+  .dark .shine {
+    color: rgba(255, 255, 255, 0.3);
+    background: linear-gradient(
+      -40deg,
+      transparent 0%,
+      transparent 35%,
+      #222 50%,
+      transparent 65%,
+      transparent 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Tema roxo */
+  .purple .shine {
+    color: rgba(255, 255, 255, 0.3);
+    background: linear-gradient(
+      -40deg,
+      transparent 0%,
+      transparent 35%,
+      hsl(271 91% 30%) 50%,
+      transparent 65%,
+      transparent 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  @keyframes shine-animation {
+    0% {
+      background-position: -300% 0;
+      opacity: 0;
+    }
+    10% {
+      opacity: 1;
+    }
+    50% {
+      background-position: 0% 0;
+      opacity: 1;
+    }
+    90% {
+      opacity: 1;
+    }
+    100% {
+      background-position: 300% 0;
+      opacity: 0;
+    }
+  }
+
+  /* Profile Avatar Card Styles */
+  .profile-avatar-card {
+    width: 131px;
+    height: 131px;
+    background: hsl(var(--card));
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    box-shadow: 0 14px 26px rgba(0,0,0,0.04);
+    transition: all 0.3s ease-out;
+    text-decoration: none;
+  }
+
+  @media (min-width: 640px) {
+    .profile-avatar-card {
+      width: 150px;
+      height: 150px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .profile-avatar-card {
+      width: 170px;
+      height: 170px;
+    }
+  }
+
+  .profile-avatar-card:hover {
+    transform: translateY(-5px) scale(1.005) translateZ(0);
+    box-shadow: 0 24px 36px rgba(0,0,0,0.11),
+      0 24px 46px hsl(var(--primary) / 0.2);
+  }
+
+  .profile-avatar-card:hover .profile-overlay {
+    transform: scale(4) translateZ(0);
+  }
+
+  .profile-avatar-card:hover .profile-circle {
+    border-color: hsl(var(--primary) / 0.8);
+    background: hsl(var(--primary) / 0.1);
+  }
+
+  .profile-avatar-card:hover .profile-circle:after {
+    background: hsl(var(--primary) / 0.2);
+  }
+
+  .profile-avatar-card:active {
+    transform: scale(1) translateZ(0);
+    box-shadow: 0 15px 24px rgba(0,0,0,0.11),
+      0 15px 24px hsl(var(--primary) / 0.2);
+  }
+
+  .profile-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: hsl(var(--card));
+    border: 3px solid hsl(var(--primary));
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+    transition: all 0.3s ease-out;
+  }
+
+  @media (min-width: 640px) {
+    .profile-circle {
+      width: 90px;
+      height: 90px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .profile-circle {
+      width: 100px;
+      height: 100px;
+    }
+  }
+
+  .profile-circle:after {
+    content: "";
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
+    display: block;
+    position: absolute;
+    background: hsl(var(--primary) / 0.1);
+    border-radius: 50%;
+    transition: opacity 0.3s ease-out;
+  }
+
+  .face-emoji {
+    z-index: 10000;
+    transform: translateZ(0);
+    font-size: 2rem;
+  }
+
+  @media (min-width: 640px) {
+    .face-emoji {
+      font-size: 2.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .face-emoji {
+      font-size: 3rem;
+    }
+  }
+
+  .profile-overlay {
+    width: 74px;
+    position: absolute;
+    height: 74px;
+    border-radius: 50%;
+    background: hsl(var(--primary) / 0.1);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+    transition: transform 0.3s ease-out;
+  }
+
+  @media (min-width: 640px) {
+    .profile-overlay {
+      width: 84px;
+      height: 84px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .profile-overlay {
+      width: 94px;
+      height: 94px;
+    }
+  }
+
+  /* Animations for Products Page */
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+
+  .hover-scale {
+    transition: transform 0.2s ease-out;
+  }
+
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
