@@ -90,3 +90,5 @@ Configurar Client ID/Secret no Supabase Secrets
 Adicionar domínio nas configurações do Spotify
 Implementar fluxo OAuth
 O player será integrado automaticamente em todas as páginas e ficará acessível globalmente, com estado persistente durante a navegação. </lov-plan
+
+Ok
