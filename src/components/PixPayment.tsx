@@ -8,7 +8,6 @@ import { Copy, QrCode, CheckCircle, Clock, XCircle, ArrowLeft, User, Mail, Credi
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import type { BookingData } from './ServiceBooking';
-import { API_CONFIG, getHeaders } from '@/config/api';
 import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse, PaymentStatusResponse } from '@/types/mercadopago';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +23,8 @@ interface PixPaymentProps {
   };
   onBack: () => void;
   onPaymentComplete?: () => Promise<void>;
+  redirectTo?: 'profile' | 'profile-mobile';
+  isFromMobile?: boolean;
 }
 interface PaymentData {
   id: string;
@@ -70,7 +71,9 @@ const GeneratedQRCode: React.FC<{
 export const PixPayment: React.FC<PixPaymentProps> = ({
   bookingData,
   onBack,
-  onPaymentComplete
+  onPaymentComplete,
+  redirectTo = 'profile',
+  isFromMobile = false
 }) => {
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -88,11 +91,28 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
   } = useToast();
   const navigate = useNavigate();
   const {
-    currentUser
-  } = useAuth(); // Obter usuário atual
+    currentUser,
+    userData: authUserData
+  } = useAuth(); // Obter usuário atual e seus dados
 
-  // Carregar dados salvos do localStorage
+  // Carregar dados salvos do localStorage ou do usuário autenticado
   useEffect(() => {
+    // Se for do mobile, usar dados do usuário autenticado
+    if (isFromMobile && authUserData) {
+      const [firstName, ...lastNameParts] = authUserData.nome.split(' ');
+      const lastName = lastNameParts.join(' ');
+      
+      setUserData({
+        firstName: firstName || '',
+        lastName: lastName || '',
+        email: authUserData.email || '',
+        cpf: authUserData.cpf || ''
+      });
+      setShowUserForm(false);
+      return;
+    }
+
+    // Caso contrário, carregar do localStorage (para booking-local)
     const savedUserData = localStorage.getItem('pixUserData');
     if (savedUserData) {
       try {
@@ -109,7 +129,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     if (savedPaymentId) {
       setCurrentPaymentId(savedPaymentId);
     }
-  }, []);
+  }, [isFromMobile, authUserData]);
 
   // Salvar dados do usuário no localStorage
   const saveUserDataToStorage = (data: UserData) => {
@@ -264,7 +284,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
   };
 
   // Função para salvar agendamento no Firestore quando pagamento aprovado
-  const saveAppointmentToFirestore = async () => {
+  const saveAppointmentToFirestore = async (paymentId: string) => {
     try {
       let appointmentDate: Date;
 
@@ -285,6 +305,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         appointmentDate = new Date();
       }
       const userName = `${userData.firstName} ${userData.lastName}`;
+      const userPhone = authUserData?.telefone || '';
       const tempoInicio = new Date(appointmentDate);
       const tempoFim = new Date(appointmentDate);
       const duracao = bookingData.selectedService?.duracao || 30;
@@ -293,8 +314,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         usuario_id: currentUser?.uid || 'pix_customer',
         usuario_nome: userName,
         usuario_email: userData.email,
-        usuario_telefone: '',
-        // PIX não coleta telefone
+        usuario_telefone: userPhone,
         servico_id: bookingData.selectedService?.id || bookingData.serviceId || 'pix_service',
         servico_nome: bookingData.service,
         sala_atendimento: bookingData.sala_atendimento || bookingData.selectedService?.sala_atendimento || '',
@@ -310,7 +330,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         duracao: duracao,
         presente: true,
         timestamp: new Date().getTime(),
-        payment_id: currentPaymentId,
+        payment_id: paymentId,
         payer_cpf: userData.cpf.replace(/\D/g, '')
       };
       await addDoc(collection(db, 'fila'), newAppointment);
@@ -367,19 +387,33 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
           }
         }
       };
-      console.log('Enviando requisição para:', `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CREATE_PIX_PAYMENT}`);
-      const response = await window.fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CREATE_PIX_PAYMENT}`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(paymentRequest)
+      console.log('Enviando requisição para criar pagamento PIX');
+      console.log('Payload:', JSON.stringify(paymentRequest, null, 2));
+      
+      // Usar supabase.functions.invoke ao invés de fetch direto
+      const { data, error: invokeError } = await supabase.functions.invoke('create-pix-payment', {
+        body: paymentRequest
       });
-      console.log('Resposta recebida:', response.status, response.statusText);
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Erro detalhado da API:', errorText);
-        throw new Error(`Erro na API: ${response.status} - ${response.statusText}\n${errorText}`);
+
+      console.log('Resposta da função:', { data, error: invokeError });
+
+      if (invokeError) {
+        console.error('Erro ao invocar função:', invokeError);
+        throw new Error(`Erro na API: ${invokeError.message || JSON.stringify(invokeError)}`);
       }
-      const result: MercadoPagoPaymentResponse = await response.json();
+
+      if (!data) {
+        throw new Error('Resposta vazia da API');
+      }
+
+      // Se data contém um erro (algumas vezes o erro vem no data)
+      if (data.error) {
+        console.error('Erro retornado pela função:', data.error);
+        throw new Error(`Erro da API: ${data.error}${data.details ? ' - ' + data.details : ''}`);
+      }
+
+      const result: MercadoPagoPaymentResponse = data;
+      console.log('Resposta recebida da API:', result);
       console.log('Resposta completa da API:', result);
       const newPaymentData: PaymentData = {
         id: result.id.toString(),
@@ -451,36 +485,45 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     // Polling a cada 5 segundos para verificar status
     const interval = setInterval(async () => {
       try {
-        const response = await window.fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_PAYMENT_STATUS}/${paymentId}`, {
-          method: 'GET',
-          headers: getHeaders()
+        // Usar supabase client com URL correta
+        const { data: statusData, error } = await supabase.functions.invoke('check-payment-status', {
+          body: { paymentId }
         });
-        if (response.ok) {
-          const statusData: PaymentStatusResponse = await response.json();
+        
+        if (error) {
+          console.error('Erro ao verificar status:', error);
+          return;
+        }
+
+        console.log('Status check response:', statusData);
+        
+        if (statusData && statusData.status) {
           if (statusData.status !== paymentStatus) {
             setPaymentStatus(statusData.status);
 
             // Atualizar status no Supabase
             await updatePaymentStatusInSupabase(paymentId, statusData.status);
+            
             if (statusData.status === 'approved') {
               clearInterval(interval);
 
               // Salvar agendamento no Firestore
-              const saved = await saveAppointmentToFirestore();
+              const saved = await saveAppointmentToFirestore(paymentId);
               if (saved) {
                 toast({
                   title: "Pagamento concluído! ✅",
                   description: "Seu agendamento foi confirmado e salvo na fila de atendimento."
                 });
 
-                // Redirecionar para o perfil após 3 segundos
+                // Redirecionar baseado na origem após 2 segundos
                 setTimeout(() => {
-                  navigate('/profile');
-                }, 3000);
+                  console.log(`Redirecionando para: /${redirectTo}`);
+                  navigate(`/${redirectTo}`);
+                }, 2000);
 
                 // Chama a função adicional se fornecida
                 if (onPaymentComplete) {
-                  onPaymentComplete();
+                  await onPaymentComplete();
                 }
               }
             } else if (statusData.status === 'rejected' || statusData.status === 'cancelled') {
@@ -564,29 +607,34 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         </CardHeader>
         
         <CardContent className="space-y-4">
-          {/* Adicionar import do ClientDropdownSelector */}
-          <div className="space-y-4">
-            <div className="border rounded-lg p-4">
-              <h4 className="font-medium mb-4">Selecionar Cliente Cadastrado (Recomendado)</h4>
-              <ClientDropdownSelector
-                onClientSelected={(clienteData) => {
-                  setUserData({
-                    firstName: clienteData.nome.split(' ')[0] || '',
-                    lastName: clienteData.nome.split(' ').slice(1).join(' ') || '',
-                    email: clienteData.email,
-                    cpf: clienteData.cpf
-                  });
-                }}
-                label="Cliente:"
-                placeholder="Escolha um cliente cadastrado"
-              />
-            </div>
-            
-            <div className="text-center text-muted-foreground">
-              <span>ou preencha manualmente abaixo</span>
-            </div>
-          </div>
+          {/* Mostrar seleção de cliente apenas no booking-local */}
+          {!isFromMobile && (
+            <>
+              <div className="space-y-4">
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-medium mb-4">Selecionar Cliente Cadastrado (Recomendado)</h4>
+                  <ClientDropdownSelector
+                    onClientSelected={(clienteData) => {
+                      setUserData({
+                        firstName: clienteData.nome.split(' ')[0] || '',
+                        lastName: clienteData.nome.split(' ').slice(1).join(' ') || '',
+                        email: clienteData.email,
+                        cpf: clienteData.cpf
+                      });
+                    }}
+                    label="Cliente:"
+                    placeholder="Escolha um cliente cadastrado"
+                  />
+                </div>
+                
+                <div className="text-center text-muted-foreground">
+                  <span>ou preencha manualmente abaixo</span>
+                </div>
+              </div>
+            </>
+          )}
 
+          {/* Formulário de dados pessoais */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="firstName">Nome *</Label>
@@ -648,7 +696,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
             <h3 className="font-semibold text-foreground mb-2">Detalhes do Agendamento</h3>
             <div className="text-sm text-muted-foreground space-y-1">
               <p><strong>Serviço:</strong> {bookingData.service}</p>
-              <p><strong>Data:</strong> {new Date(bookingData.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+              <p><strong>Data:</strong> {bookingData.date}</p>
               <p><strong>Horário:</strong> {bookingData.time}</p>
               <p><strong>Cliente:</strong> {userData.firstName} {userData.lastName}</p>
               <p><strong>CPF:</strong> {userData.cpf}</p>
@@ -693,7 +741,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
           <h3 className="font-semibold text-foreground mb-2">Resumo do Pedido</h3>
           <div className="text-sm text-muted-foreground space-y-1">
             <p><strong>Serviço:</strong> {bookingData.service}</p>
-            <p><strong>Data:</strong> {new Date(bookingData.date + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+            <p><strong>Data:</strong> {bookingData.date}</p>
             <p><strong>Horário:</strong> {bookingData.time}</p>
             <p><strong>Cliente:</strong> {userData.firstName} {userData.lastName}</p>
             <p><strong>CPF:</strong> {userData.cpf}</p>

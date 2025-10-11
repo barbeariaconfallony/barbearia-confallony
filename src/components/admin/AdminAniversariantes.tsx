@@ -82,10 +82,10 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
     console.log('🔍 Iniciando carregamento de mensagens do Firestore...');
     setIsLoadingMensagens(true);
     try {
+      // Removido o orderBy para evitar necessidade de índice composto
       const q = query(
         collection(db, 'mensagens_aniversario'),
-        where('ativa', '==', true),
-        orderBy('dataCriacao', 'desc')
+        where('ativa', '==', true)
       );
       console.log('📋 Query criada:', q);
       
@@ -98,10 +98,18 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
         setMensagensDisponiveis(mensagensPadrao);
         setSelectedMessage(mensagensPadrao[0]);
       } else {
-        const mensagensFirestore = snapshot.docs.map((doc, index) => {
-          console.log(`📄 Documento ${index + 1}:`, doc.id, doc.data());
-          return doc.data().conteudo;
-        });
+        // Ordenar manualmente por dataCriacao
+        const mensagensFirestore = snapshot.docs
+          .map((doc) => {
+            console.log(`📄 Documento:`, doc.id, doc.data());
+            const data = doc.data();
+            return {
+              conteudo: data.conteudo,
+              dataCriacao: data.dataCriacao?.toDate() || new Date()
+            };
+          })
+          .sort((a, b) => b.dataCriacao.getTime() - a.dataCriacao.getTime())
+          .map(item => item.conteudo);
         
         console.log('✅ Mensagens carregadas do Firestore:', mensagensFirestore);
         setMensagensDisponiveis(mensagensFirestore);
@@ -134,15 +142,20 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
   }, []);
 
   // Função para enviar mensagem via WhatsApp
-  const sendWhatsAppMessage = useCallback((nome: string, message: string) => {
-    // Usar número fixo conforme solicitado
-    const phoneNumber = "5501234567";
+  const sendWhatsAppMessage = useCallback((nome: string, telefone: string, message: string) => {
+    // Normalizar o telefone para incluir apenas dígitos
+    let phoneNumber = normalizePhone(telefone);
+    
+    // Garantir que tenha o código do país (55)
+    if (!phoneNumber.startsWith('55')) {
+      phoneNumber = '55' + phoneNumber;
+    }
     
     // Personalizar mensagem com o nome
     const personalizedMessage = message.replace(/\{nome\}/g, nome);
     
     const encodedMessage = encodeURIComponent(personalizedMessage);
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodedMessage}`;
     
     window.open(whatsappUrl, '_blank');
     
@@ -150,7 +163,7 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
       title: "WhatsApp Aberto",
       description: `Mensagem preparada para ${nome}`,
     });
-  }, [toast]);
+  }, [normalizePhone, toast]);
 
   // Filtrar aniversariantes baseado no período selecionado
   const aniversariantes = useMemo(() => {
@@ -193,12 +206,12 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
         switch (filterPeriod) {
           case "hoje":
             return diffDays === 0;
-          case "amanha":
-            return diffDays === 1;
-          case "semana":
+          case "7dias":
             return diffDays >= 0 && diffDays <= 7;
+          case "15dias":
+            return diffDays >= 0 && diffDays <= 15;
           case "mes":
-            return aniversarioEsteAno.getMonth() === hoje.getMonth() && aniversarioEsteAno.getFullYear() === hoje.getFullYear();
+            return diffDays >= 0 && diffDays <= 30;
           default:
             return false;
         }
@@ -309,14 +322,14 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
           </div>
           
           <Select value={filterPeriod} onValueChange={setFilterPeriod}>
-            <SelectTrigger className="w-full sm:w-40">
+            <SelectTrigger className="w-full sm:w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="hoje">Hoje</SelectItem>
-              <SelectItem value="amanha">Amanhã</SelectItem>
-              <SelectItem value="semana">Próximos 7 dias</SelectItem>
-              <SelectItem value="mes">Este mês</SelectItem>
+              <SelectItem value="7dias">Próximos 7 dias</SelectItem>
+              <SelectItem value="15dias">Próximos 15 dias</SelectItem>
+              <SelectItem value="mes">Este Mês</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -330,8 +343,8 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
             <p className="text-2xl font-bold">{aniversariantes.length}</p>
             <p className="text-sm text-muted-foreground">
               {filterPeriod === 'hoje' ? 'Hoje' : 
-               filterPeriod === 'amanha' ? 'Amanhã' : 
-               filterPeriod === 'semana' ? 'Próximos 7 dias' : 'Este mês'}
+               filterPeriod === '7dias' ? 'Próximos 7 dias' : 
+               filterPeriod === '15dias' ? 'Próximos 15 dias' : 'Este mês'}
             </p>
           </CardContent>
         </Card>
@@ -478,7 +491,7 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
                         
                         <Button 
                           className="w-full bg-green-600 hover:bg-green-700"
-                          onClick={() => sendWhatsAppMessage(user.nome, selectedMessage)}
+                          onClick={() => sendWhatsAppMessage(user.nome, user.telefone || '', selectedMessage)}
                         >
                           <ExternalLink className="h-4 w-4 mr-2" />
                           Abrir WhatsApp
@@ -508,8 +521,8 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
             <h3 className="text-lg font-semibold mb-2">Nenhum aniversariante encontrado</h3>
             <p className="text-muted-foreground">
               {filterPeriod === 'hoje' ? 'Não há aniversários hoje.' :
-               filterPeriod === 'amanha' ? 'Não há aniversários amanhã.' :
-               filterPeriod === 'semana' ? 'Não há aniversários nos próximos 7 dias.' :
+               filterPeriod === '7dias' ? 'Não há aniversários nos próximos 7 dias.' :
+               filterPeriod === '15dias' ? 'Não há aniversários nos próximos 15 dias.' :
                'Não há aniversários este mês.'}
             </p>
           </CardContent>

@@ -344,7 +344,7 @@ const Produtos = () => {
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-lg py-4"
                 size="lg"
               >
-                🛒 Finalizar Compra
+                Finalizar Compra
               </Button>
 
               {/* Total */}

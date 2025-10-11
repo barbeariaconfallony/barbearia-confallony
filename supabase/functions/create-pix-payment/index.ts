@@ -23,10 +23,18 @@ serve(async (req) => {
   }
 
   try {
+    console.log('=== Iniciando criação de pagamento PIX ===');
     const { transaction_amount, description, payer } = await req.json() as CreatePixPaymentRequest
+
+    console.log('Dados recebidos:', {
+      transaction_amount,
+      description,
+      payer: { email: payer?.email }
+    });
 
     // Validações básicas
     if (!transaction_amount || !description || !payer) {
+      console.error('Dados obrigatórios faltando');
       return new Response(
         JSON.stringify({ error: 'Dados obrigatórios não fornecidos' }),
         { 
@@ -39,6 +47,7 @@ serve(async (req) => {
     // Get access token from environment
     const accessToken = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')
     if (!accessToken) {
+      console.error('MERCADOPAGO_ACCESS_TOKEN não configurado');
       return new Response(
         JSON.stringify({ error: 'Credenciais do Mercado Pago não configuradas' }),
         { 
@@ -47,6 +56,8 @@ serve(async (req) => {
         }
       )
     }
+
+    console.log('Token encontrado, preparando pagamento...');
 
     // Dados do pagamento
     const paymentData = {
@@ -76,6 +87,8 @@ serve(async (req) => {
       },
       body: JSON.stringify(paymentData)
     })
+
+    console.log('Status da resposta MP:', response.status);
 
     if (!response.ok) {
       const errorData = await response.text()
@@ -109,7 +122,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Erro interno do servidor',
-        details: error.message 
+        details: error instanceof Error ? error.message : String(error)
       }),
       { 
         status: 500, 

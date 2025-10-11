@@ -1,1 +1,10 @@
-project_id = "vxfofymcvcycfttzhftf"
+project_id = "zhojnzbnjtpdeshkdwcb"
+
+[functions.create-pix-payment]
+verify_jwt = false
+
+[functions.check-payment-status]
+verify_jwt = false
+
+[functions.mercadopago-webhook]
+verify_jwt = false

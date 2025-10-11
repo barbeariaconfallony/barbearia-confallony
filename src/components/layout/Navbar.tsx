@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { shouldShowFullscreenButton } from "@/utils/device-detection";
-import mustacheLogo from "@/assets/confallony-mustache-logo.png";
+import logoIcon from "@/assets/confallony-logo-icon.png";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const Navbar = () => {
@@ -119,8 +119,8 @@ const Navbar = () => {
             {/* Logo/Brand - Left com pouco espaço */}
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="flex items-center">
-                <img src={mustacheLogo} alt="Confallony Logo" className="h-8 w-8 sm:mr-2" />
-                <span className="text-lg sm:text-xl font-bold truncate hidden sm:block">Barbearia Confallony</span>
+                
+                
               </Link>
             </div>
 

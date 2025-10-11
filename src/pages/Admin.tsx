@@ -71,6 +71,7 @@ import { UserDetailsModal } from "@/components/admin/UserDetailsModal";
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { AdminAniversariantes } from "@/components/admin/AdminAniversariantes";
 import { AdminFotos } from "@/components/admin/AdminFotos";
+import { AdminConfigAgendamento } from "@/components/admin/AdminConfigAgendamento";
 import ProductManagement from "@/pages/ProductManagement";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useFirebaseMonitoring } from "@/hooks/useFirebaseMonitoring";
@@ -1150,7 +1151,7 @@ const Admin = () => {
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-9 h-auto gap-1">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-10 h-auto gap-1">
               <TabsTrigger value="dashboard" className="text-xs sm:text-sm">Dashboard</TabsTrigger>
               <TabsTrigger value="services" className="text-xs sm:text-sm">Serviços</TabsTrigger>
               <TabsTrigger value="employees" className="text-xs sm:text-sm">Funcionários</TabsTrigger>
@@ -1158,6 +1159,7 @@ const Admin = () => {
               <TabsTrigger value="products" className="text-xs sm:text-sm">Produtos</TabsTrigger>
               <TabsTrigger value="fotos" className="text-xs sm:text-sm">Fotos</TabsTrigger>
               <TabsTrigger value="aniversariantes" className="text-xs sm:text-sm">Aniversários</TabsTrigger>
+              <TabsTrigger value="config" className="text-xs sm:text-sm">Agendamentos</TabsTrigger>
               <TabsTrigger value="reports" className="text-xs sm:text-sm">Relatórios</TabsTrigger>
               <TabsTrigger value="database" className="text-xs sm:text-sm">Banco</TabsTrigger>
             </TabsList>
@@ -1890,6 +1892,11 @@ const Admin = () => {
             {/* Aniversariantes */}
             <TabsContent value="aniversariantes" className="space-y-6">
               <AdminAniversariantes users={users} />
+            </TabsContent>
+
+            {/* Configurações de Agendamento */}
+            <TabsContent value="config" className="space-y-6">
+              <AdminConfigAgendamento />
             </TabsContent>
 
             {/* Relatórios */}

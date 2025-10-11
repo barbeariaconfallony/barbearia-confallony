@@ -130,7 +130,7 @@ export const AdminDashboard = ({
             className="bg-gradient-to-br from-blue-500/10 to-blue-700/10 text-white"
           />
           <StatsCard
-            title="Agendamentos"
+            title="Agendamentos na Fila"
             value={statistics.agendamentosHoje.toString()}
             icon={<Calendar className="h-8 w-8 text-white" />}
             description={`Para ${period === 'hoje' ? 'hoje' : 'o período'}`}
@@ -227,8 +227,8 @@ export const AdminDashboard = ({
               <ResponsiveContainer width="100%" height={300}>
                 <RadarChart data={dadosAnaliseEstoque}>
                   <PolarGrid stroke="rgba(148, 163, 184, 0.2)" />
-                  <PolarAngleAxis dataKey="subject" />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} />
+                  <PolarAngleAxis dataKey="subject" style={{ fontSize: '10px' }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} style={{ fontSize: '10px' }} />
                   <Radar name="Performance" dataKey="A" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
                   <RechartsTooltip 
                     content={({ active, payload, label }) => {
@@ -281,9 +281,27 @@ export const AdminDashboard = ({
                     ]}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
+                    labelLine={true}
+                    label={(props) => {
+                      const { cx, cy, midAngle, innerRadius, outerRadius, name, percent } = props;
+                      const RADIAN = Math.PI / 180;
+                      const radius = outerRadius + 25;
+                      const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                      const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                      return (
+                        <text 
+                          x={x} 
+                          y={y} 
+                          fill="currentColor" 
+                          textAnchor={x > cx ? 'start' : 'end'} 
+                          dominantBaseline="central"
+                          style={{ fontSize: '10px' }}
+                        >
+                          {`${name} ${(percent * 100).toFixed(0)}%`}
+                        </text>
+                      );
+                    }}
+                    outerRadius={70}
                     fill="#8884d8"
                     dataKey="value"
                   >
@@ -351,9 +369,27 @@ export const AdminDashboard = ({
                     ]}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
+                    labelLine={true}
+                    label={(props) => {
+                      const { cx, cy, midAngle, innerRadius, outerRadius, name, percent } = props;
+                      const RADIAN = Math.PI / 180;
+                      const radius = outerRadius + 25;
+                      const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                      const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                      return (
+                        <text 
+                          x={x} 
+                          y={y} 
+                          fill="currentColor" 
+                          textAnchor={x > cx ? 'start' : 'end'} 
+                          dominantBaseline="central"
+                          style={{ fontSize: '10px' }}
+                        >
+                          {`${name} ${(percent * 100).toFixed(0)}%`}
+                        </text>
+                      );
+                    }}
+                    outerRadius={70}
                     fill="#8884d8"
                     dataKey="value"
                   >

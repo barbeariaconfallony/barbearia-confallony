@@ -3,6 +3,7 @@ import { doc, updateDoc, collection, query, where, getDocs } from "firebase/fire
 import { updatePassword, updateEmail } from "firebase/auth";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
+import { Navigate } from "react-router-dom";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +79,11 @@ const Profile = () => {
   const { currentUser, userData, updateUserData, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const { comandasFinalizadas, loading: loadingComandas } = useComandas();
+
+  // Redireciona usuários não-admin para /profile-mobile
+  if (userData && !authLoading && !userData.isAdmin) {
+    return <Navigate to="/profile-mobile" replace />;
+  }
   const [isLoading, setIsLoading] = useState(false);
   const [servicosPendentes, setServicosPendentes] = useState<QueueItem[]>([]);
   const [atendimentosConcluidos, setAtendimentosConcluidos] = useState<AtendimentoConcluido[]>([]);

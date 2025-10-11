@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, addDoc, deleteDoc, getDoc, limit, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQueueAutomation } from "@/contexts/QueueAutomationContext";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +12,19 @@ import { QueueItemActionsModal } from "@/components/QueueItemActionsModal";
 import { UltimosAgendamentos } from "@/components/UltimosAgendamentos";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, Users, CheckCircle, AlertCircle, User, Scissors, ChevronRight, Calendar, TrendingUp, Star, Check, Timer, UserCheck, Play, Pause, CreditCard, Banknote, Palette, Sparkles, Zap, Heart } from "lucide-react";
+import { Clock, Users, CheckCircle, AlertCircle, User, Scissors, ChevronRight, Calendar, TrendingUp, Star, Check, Timer, UserCheck, Play, Pause, CreditCard, Banknote, Palette, Sparkles, Zap, Heart, Ruler, Copy } from "lucide-react";
 import { format, differenceInSeconds, addMinutes, isAfter, parse, isToday, isSameDay, startOfDay, endOfDay, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+interface AlturasCorte {
+  lateral_esquerda?: number;
+  lateral_direita?: number;
+  nuca?: number;
+  topo?: number;
+  frente?: number;
+  barba?: number;
+  observacao_extra?: string;
+}
 interface QueueItem {
   id: string;
   usuario_id: string;
@@ -55,16 +66,21 @@ const Queue = () => {
   const {
     toast
   } = useToast();
-  const [queueData, setQueueData] = useState<QueueItem[]>([]);
-  const [currentlyServing, setCurrentlyServing] = useState<QueueItem | null>(null);
+  
+  // Consumir dados do context de automação
+  const {
+    queueData,
+    currentlyServing,
+    currentServiceCountdown,
+    loading,
+    error,
+    startScheduledAppointment,
+    finishCurrentAppointment: finishFromContext
+  } = useQueueAutomation();
+  
   const [completedToday, setCompletedToday] = useState<QueueItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | React.ReactNode | null>(null);
   const [currentTime, setCurrentTime] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
-  const [currentServiceCountdown, setCurrentServiceCountdown] = useState<{
-    [key: string]: number | null;
-  }>({});
   const [selectedQueueItem, setSelectedQueueItem] = useState<QueueItem | null>(null);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('geral');
@@ -80,7 +96,13 @@ const Queue = () => {
       observacoes: string;
       data: Date;
     }>;
+    ultimoCorte?: {
+      alturas_corte?: AlturasCorte;
+      data: Date;
+    };
   } | null>(null);
+  const [alturasCorte, setAlturasCorte] = useState<AlturasCorte>({});
+  const [atendimentoDesconto, setAtendimentoDesconto] = useState<number>(0);
   const [nextUserDetails, setNextUserDetails] = useState<{
     data_nascimento?: Date;
     data_cadastro?: Date;
@@ -94,8 +116,6 @@ const Queue = () => {
     }>;
   } | null>(null);
   const timeRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
-  const automationRef = useRef<NodeJS.Timeout | null>(null);
   const [blinkingOpacity, setBlinkingOpacity] = useState(1);
   useEffect(() => {
     const updateDateTime = () => {
@@ -143,126 +163,12 @@ const Queue = () => {
       return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     }
   };
-  const startScheduledAppointment = async (appointment: QueueItem) => {
-    const now = new Date();
-    // Usar duração específica do agendamento ou fallback para tempo_estimado
-    const duracaoMinutos = appointment.duracao || appointment.tempo_estimado || 30;
-    const tempoFim = addMinutes(now, duracaoMinutos);
-    try {
-      await updateDoc(doc(db, "fila", appointment.id), {
-        status: 'em_atendimento',
-        tempo_inicio: now,
-        tempo_fim: tempoFim
-      });
-      toast({
-        title: "Atendimento iniciado!",
-        description: `${appointment.usuario_nome} - ${appointment.servico_nome}`,
-        variant: "default"
-      });
-    } catch (error) {
-      console.error("Erro ao iniciar atendimento:", error);
-      toast({
-        title: "Erro ao iniciar atendimento",
-        description: `${appointment.usuario_nome} - ${appointment.servico_nome}`,
-        variant: "destructive"
-      });
-    }
-  };
+  // startScheduledAppointment agora vem do context
+  // Wrapper para finalizar atendimento com dados locais
   const finishCurrentAppointment = async () => {
-    if (!currentlyServing) return;
-    const now = new Date();
-    try {
-      // Atualiza o status na fila antes de finalizar
-      await updateDoc(doc(db, "fila", currentlyServing.id), {
-        status: 'concluido',
-        tempo_fim: now
-      });
-      const completedAppointment = {
-        ...currentlyServing,
-        status: 'concluido' as const,
-        tempo_fim: now,
-        data_conclusao: now,
-        avaliacao: null,
-        observacoes: '',
-        valor_pago: currentlyServing.preco || 0,
-        desconto_aplicado: 0,
-        funcionario_nome: currentlyServing.funcionario_nome || userData?.nome || 'Funcionário',
-        servico_nome: currentlyServing.servico_nome,
-        usuario_email: currentlyServing.usuario_email || ''
-      };
-
-      // Envia para agendamentos_finalizados
-      await addDoc(collection(db, 'agendamentos_finalizados'), completedAppointment);
-
-      // Remove da fila após finalização
-      await deleteDoc(doc(db, "fila", currentlyServing.id));
-      toast({
-        title: "Atendimento concluído!",
-        description: `${currentlyServing.usuario_nome} - ${currentlyServing.servico_nome}`,
-        variant: "default"
-      });
-    } catch (error) {
-      console.error("Erro ao concluir atendimento:", error);
-      toast({
-        title: "Erro ao concluir atendimento",
-        description: `${currentlyServing.usuario_nome} - ${currentlyServing.servico_nome}`,
-        variant: "destructive"
-      });
-    }
+    await finishFromContext(alturasCorte, atendimentoDesconto);
   };
-  const updateCurrentServiceCountdown = () => {
-    const newCountdown: {
-      [key: string]: number | null;
-    } = {};
-
-    // Encontrar todos os atendimentos em andamento por sala
-    const servingBySala: {
-      [key: string]: QueueItem;
-    } = {};
-    queueData.filter(item => item.status === 'em_atendimento').forEach(item => {
-      const sala = item.sala_atendimento || 'Geral';
-      servingBySala[sala] = item;
-    });
-
-    // Calcular countdown para cada sala
-    Object.keys(servingBySala).forEach(sala => {
-      const serving = servingBySala[sala];
-      if (!serving || !serving.tempo_fim) {
-        newCountdown[sala] = null;
-        return;
-      }
-      const now = new Date();
-      const remainingSeconds = Math.max(0, Math.floor((serving.tempo_fim.getTime() - now.getTime()) / 1000));
-      newCountdown[sala] = remainingSeconds;
-    });
-    setCurrentServiceCountdown(newCountdown);
-  };
-  const checkAutomation = () => {
-    const now = new Date();
-    if (currentlyServing && currentlyServing.tempo_fim && isAfter(now, currentlyServing.tempo_fim)) {
-      finishCurrentAppointment();
-      return;
-    }
-    const scheduledAppointments = queueData.filter(item => item.status === 'confirmado' && item.tempo_inicio).sort((a, b) => a.tempo_inicio!.getTime() - b.tempo_inicio!.getTime());
-    for (const appointment of scheduledAppointments) {
-      if (appointment.tempo_inicio && isAfter(now, appointment.tempo_inicio)) {
-        startScheduledAppointment(appointment);
-        break;
-      }
-    }
-  };
-  useEffect(() => {
-    countdownRef.current = setInterval(updateCurrentServiceCountdown, 1000);
-    automationRef.current = setInterval(checkAutomation, 1000);
-    return () => {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
-      if (automationRef.current) {
-        clearInterval(automationRef.current);
-      }
-    };
-  }, [currentlyServing, queueData]);
+  // updateCurrentServiceCountdown e checkAutomation agora rodam no context
 
   // Função para buscar detalhes do usuário do Firestore
   const fetchUserDetailsGeneric = async (usuarioEmail: string) => {
@@ -290,12 +196,14 @@ const Queue = () => {
 
       // Buscar histórico dos últimos atendimentos na coleção "agendamentos_finalizados" (últimos 5)
       let historico = [];
+      let ultimoCorte = null;
       try {
         // Buscar pelo email do usuário em atendimento
         const userEmail = userInfo.email || usuarioEmail;
         if (userEmail) {
           const historyQuery = query(collection(db, "agendamentos_finalizados"), where("usuario_email", "==", userEmail), orderBy("tempo_fim", "desc"), limit(5));
           const historySnapshot = await getDocs(historyQuery);
+          let index = 0;
           historySnapshot.forEach(doc => {
             const data = doc.data();
             if (data.servico_nome) {
@@ -304,6 +212,15 @@ const Queue = () => {
                 observacoes: data.observacoes || '',
                 data: data.tempo_fim && typeof data.tempo_fim.toDate === 'function' ? data.tempo_fim.toDate() : data.tempo_fim || new Date()
               });
+              
+              // Capturar dados do último corte (primeiro resultado)
+              if (index === 0 && data.alturas_corte) {
+                ultimoCorte = {
+                  alturas_corte: data.alturas_corte,
+                  data: data.tempo_fim && typeof data.tempo_fim.toDate === 'function' ? data.tempo_fim.toDate() : data.tempo_fim || new Date()
+                };
+              }
+              index++;
             }
           });
         }
@@ -312,7 +229,8 @@ const Queue = () => {
       }
       return {
         ...userInfo,
-        historico_agendamentos: historico
+        historico_agendamentos: historico,
+        ultimoCorte
       };
     } catch (error) {
       console.error("Erro ao buscar detalhes do usuário:", error);
@@ -334,6 +252,40 @@ const Queue = () => {
   const fetchNextUserDetails = async (usuarioEmail: string) => {
     const details = await fetchUserDetailsGeneric(usuarioEmail);
     setNextUserDetails(details);
+  };
+
+  // Limpar estados ao trocar cliente
+  useEffect(() => {
+    if (currentlyServing) {
+      console.log('🔄 Queue: Novo atendimento iniciado, resetando estados', {
+        cliente: currentlyServing.usuario_nome,
+        id: currentlyServing.id
+      });
+      setAlturasCorte({});
+      setAtendimentoDesconto(0);
+    }
+  }, [currentlyServing?.id]);
+
+  // Função para salvar dados no Firestore
+  const salvarDadosAtendimento = async () => {
+    if (!currentlyServing) return;
+
+    try {
+      console.log('💾 Queue: Salvando dados no Firestore', {
+        cliente: currentlyServing.usuario_nome,
+        alturas_corte: alturasCorte,
+        desconto: atendimentoDesconto
+      });
+
+      await updateDoc(doc(db, "fila", currentlyServing.id), {
+        alturas_corte: alturasCorte,
+        desconto_aplicado: atendimentoDesconto
+      });
+
+      console.log('✅ Queue: Dados salvos com sucesso');
+    } catch (error) {
+      console.error('❌ Queue: Erro ao salvar dados:', error);
+    }
   };
 
   // Buscar detalhes do usuário quando há atendimento atual
@@ -382,115 +334,7 @@ const Queue = () => {
     const progress = (totalSeconds - seconds) / totalSeconds;
     return progress * 565.48;
   };
-  useEffect(() => {
-    if (!currentUser) return;
-    const fetchQueueData = async () => {
-      try {
-        const q = query(collection(db, "fila"), where("status", "in", ["confirmado", "em_atendimento"]), orderBy("status"), orderBy("timestamp", "asc"));
-        const unsubscribe = onSnapshot(q, async querySnapshot => {
-          const queueItems: QueueItem[] = [];
-          let currentPosition = 0;
-          let servingItem: QueueItem | null = null;
-          querySnapshot.forEach(doc => {
-            const data = doc.data();
-            const item: QueueItem = {
-              id: doc.id,
-              usuario_id: data.usuario_id,
-              usuario_nome: data.usuario_nome,
-              usuario_email: data.usuario_email || '',
-              usuario_telefone: data.usuario_telefone || '',
-              servico_nome: data.servico_nome,
-              servico_tipo: data.servico_tipo || "Outros",
-              sala_atendimento: data.sala_atendimento || data.servico_tipo || "Outros",
-              preco: data.preco || 0,
-              status: data.status,
-              posicao: currentPosition,
-              tempo_estimado: data.tempo_estimado || 30,
-              duracao: data.duracao,
-              // incluir duração específica do agendamento
-              data: data.data.toDate(),
-              presente: data.presente || false,
-              timestamp: data.timestamp || data.data.toMillis(),
-              tempo_inicio: data.tempo_inicio?.toDate(),
-              tempo_fim: data.tempo_fim?.toDate(),
-              forma_pagamento: data.forma_pagamento || 'Presencial',
-              funcionario_nome: data.funcionario_nome || userData?.nome || 'Funcionário'
-            };
-            if (item.status === 'em_atendimento') {
-              servingItem = item;
-            } else {
-              currentPosition++;
-            }
-            queueItems.push(item);
-          });
-
-          // Ordenar a fila: presentes primeiro, depois ausentes
-          const sortedQueue = [...queueItems].sort((a, b) => {
-            if (a.presente === b.presente) {
-              return a.posicao - b.posicao;
-            }
-            return a.presente ? -1 : 1;
-          });
-
-          // Reorganizar posições para que os ausentes fiquem após os presentes
-          let presentCount = 0;
-          let absentCount = 0;
-          const reorderedQueue = sortedQueue.map(item => {
-            if (item.status === 'em_atendimento') {
-              return item;
-            }
-            if (item.presente) {
-              presentCount++;
-              return {
-                ...item,
-                posicao: presentCount - 1
-              };
-            } else {
-              absentCount++;
-              // Se for o 3° da fila e estiver ausente, mover para 4°
-              if (presentCount + absentCount === 3) {
-                return {
-                  ...item,
-                  posicao: 3 // 4° posição (índice 3)
-                };
-              }
-              return {
-                ...item,
-                posicao: presentCount + absentCount - 1
-              };
-            }
-          });
-          setQueueData(reorderedQueue);
-          setCurrentlyServing(servingItem);
-          setLoading(false);
-          setError(null);
-        }, error => {
-          console.error("Error in snapshot listener:", error);
-          setError(<span>
-                A consulta requer um índice. Crie-o{' '}
-                <a href="https://console.firebase.google.com/v1/r/project/barbearia-confallony/firestore/indexes?create_composite=ClFwcm9qZWN0cy9iYXJiZWFyaWEtY29uZmFsbG9ueS9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvZmlsYS9pbmRleGVzL18QARoKCgZzdGF0dXMQARoNCgl0aW1lc3RhbXAQARoMCghfX25hbWVfXxAB" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
-                  aqui
-                </a>
-              </span>);
-          setLoading(false);
-        });
-        return () => unsubscribe();
-      } catch (error) {
-        console.error("Error setting up queue listener:", error);
-        setError("Erro ao configurar a fila. Tente recarregar a página.");
-        setLoading(false);
-      }
-    };
-    fetchQueueData();
-    return () => {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
-      if (automationRef.current) {
-        clearInterval(automationRef.current);
-      }
-    };
-  }, [currentUser]);
+  // fetchQueueData agora é gerenciado pelo context
   useEffect(() => {
     if (!currentUser) return;
     const today = new Date();
@@ -811,23 +655,233 @@ const Queue = () => {
                   {/* Últimos Agendamentos - componente atualizado */}
                   <UltimosAgendamentos userEmail={currentlyServing?.usuario_email || ''} maxItems={3} compact={true} />
 
+                  {/* Histórico do último corte */}
+                  {userDetails?.ultimoCorte?.alturas_corte && (
+                    <div className="p-3 bg-muted/50 rounded-lg space-y-3">
+                      <h5 className="text-xs font-semibold flex items-center gap-2">
+                        <Ruler className="h-3 w-3 text-primary" />
+                        Último Corte Realizado
+                        <span className="text-muted-foreground font-normal ml-auto">
+                          {format(userDetails.ultimoCorte.data, 'dd/MM/yyyy')}
+                        </span>
+                      </h5>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {userDetails.ultimoCorte.alturas_corte.lateral_esquerda !== undefined && (
+                          <div className="bg-background p-2 rounded">
+                            <span className="text-muted-foreground block">Lat. Esq:</span>
+                            <span className="font-medium text-sm">{userDetails.ultimoCorte.alturas_corte.lateral_esquerda}mm</span>
+                          </div>
+                        )}
+                        {userDetails.ultimoCorte.alturas_corte.lateral_direita !== undefined && (
+                          <div className="bg-background p-2 rounded">
+                            <span className="text-muted-foreground block">Lat. Dir:</span>
+                            <span className="font-medium text-sm">{userDetails.ultimoCorte.alturas_corte.lateral_direita}mm</span>
+                          </div>
+                        )}
+                        {userDetails.ultimoCorte.alturas_corte.nuca !== undefined && (
+                          <div className="bg-background p-2 rounded">
+                            <span className="text-muted-foreground block">Nuca:</span>
+                            <span className="font-medium text-sm">{userDetails.ultimoCorte.alturas_corte.nuca}mm</span>
+                          </div>
+                        )}
+                        {userDetails.ultimoCorte.alturas_corte.topo !== undefined && (
+                          <div className="bg-background p-2 rounded">
+                            <span className="text-muted-foreground block">Topo:</span>
+                            <span className="font-medium text-sm">{userDetails.ultimoCorte.alturas_corte.topo}mm</span>
+                          </div>
+                        )}
+                        {userDetails.ultimoCorte.alturas_corte.frente !== undefined && (
+                          <div className="bg-background p-2 rounded">
+                            <span className="text-muted-foreground block">Frente:</span>
+                            <span className="font-medium text-sm">{userDetails.ultimoCorte.alturas_corte.frente}mm</span>
+                          </div>
+                        )}
+                        {userDetails.ultimoCorte.alturas_corte.barba !== undefined && (
+                          <div className="bg-background p-2 rounded">
+                            <span className="text-muted-foreground block">Barba:</span>
+                            <span className="font-medium text-sm">{userDetails.ultimoCorte.alturas_corte.barba}mm</span>
+                          </div>
+                        )}
+                      </div>
+                      {userDetails.ultimoCorte.alturas_corte.observacao_extra && (
+                        <p className="text-xs text-muted-foreground bg-background p-2 rounded">
+                          {userDetails.ultimoCorte.alturas_corte.observacao_extra}
+                        </p>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={() => setAlturasCorte(userDetails.ultimoCorte!.alturas_corte!)}
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        Repetir Este Corte
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Inputs para detalhes do atendimento */}
                   <div className="space-y-3">
                     <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Scissors className="h-4 w-4 text-primary" />
-                      Detalhes do Atendimento
+                      <Ruler className="h-4 w-4 text-primary" />
+                      Numerações Usadas no Corte
+                      <span className="ml-auto text-xs font-normal text-muted-foreground">
+                        {Object.keys(alturasCorte).filter(k => alturasCorte[k as keyof AlturasCorte] !== undefined && k !== 'observacao_extra').length} de 6 preenchidas
+                      </span>
                     </h4>
                     
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">Observações</label>
-                      <textarea placeholder="Detalhes do serviço realizado..." className="w-full h-12 px-2 py-1 text-xs border border-border rounded resize-none bg-background" />
-                    </div>
-
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-xs font-medium text-muted-foreground">Desconto (R$)</label>
-                        <input type="number" step="0.01" placeholder="0.00" className="w-full px-2 py-1 text-xs border border-border rounded bg-background" />
+                        <label className="text-xs font-medium text-muted-foreground">Lateral Esquerda (mm)</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="25"
+                          step="0.5"
+                          placeholder="Ex: 2"
+                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                          value={alturasCorte.lateral_esquerda ?? ''}
+                          onChange={(e) => {
+                            const newValue = e.target.value ? Number(e.target.value) : undefined;
+                            setAlturasCorte(prev => ({...prev, lateral_esquerda: newValue}));
+                          }}
+                          onBlur={salvarDadosAtendimento}
+                        />
                       </div>
+                      
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Lateral Direita (mm)</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="25"
+                          step="0.5"
+                          placeholder="Ex: 2"
+                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                          value={alturasCorte.lateral_direita ?? ''}
+                          onChange={(e) => setAlturasCorte(prev => ({
+                            ...prev, 
+                            lateral_direita: e.target.value ? Number(e.target.value) : undefined
+                          }))}
+                          onBlur={salvarDadosAtendimento}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Nuca (mm)</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="25"
+                          step="0.5"
+                          placeholder="Ex: 1"
+                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                          value={alturasCorte.nuca ?? ''}
+                          onChange={(e) => setAlturasCorte(prev => ({
+                            ...prev, 
+                            nuca: e.target.value ? Number(e.target.value) : undefined
+                          }))}
+                          onBlur={salvarDadosAtendimento}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Topo (mm)</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="25"
+                          step="0.5"
+                          placeholder="Ex: 8"
+                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                          value={alturasCorte.topo ?? ''}
+                          onChange={(e) => setAlturasCorte(prev => ({
+                            ...prev, 
+                            topo: e.target.value ? Number(e.target.value) : undefined
+                          }))}
+                          onBlur={salvarDadosAtendimento}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Frente (mm)</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="25"
+                          step="0.5"
+                          placeholder="Ex: 8"
+                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                          value={alturasCorte.frente ?? ''}
+                          onChange={(e) => setAlturasCorte(prev => ({
+                            ...prev, 
+                            frente: e.target.value ? Number(e.target.value) : undefined
+                          }))}
+                          onBlur={salvarDadosAtendimento}
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Barba (mm)</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          max="25"
+                          step="0.5"
+                          placeholder="Ex: 3"
+                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                          value={alturasCorte.barba ?? ''}
+                          onChange={(e) => setAlturasCorte(prev => ({
+                            ...prev, 
+                            barba: e.target.value ? Number(e.target.value) : undefined
+                          }))}
+                          onBlur={salvarDadosAtendimento}
+                        />
+                      </div>
+                    </div>
+                    
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs"
+                      onClick={() => {
+                        if (alturasCorte.lateral_esquerda !== undefined) {
+                          setAlturasCorte(prev => ({
+                            ...prev,
+                            lateral_direita: prev.lateral_esquerda
+                          }));
+                        }
+                      }}
+                    >
+                      Igualar Laterais
+                    </Button>
+                    
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Observações Extras</label>
+                      <textarea 
+                        placeholder="Ex: Degradê alto, tesoura no topo, barba aparada..."
+                        className="w-full h-16 px-2 py-1 text-xs border border-border rounded resize-none bg-background"
+                        value={alturasCorte.observacao_extra ?? ''}
+                        onChange={(e) => setAlturasCorte(prev => ({
+                          ...prev,
+                          observacao_extra: e.target.value
+                        }))}
+                        onBlur={salvarDadosAtendimento}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Desconto (R$)</label>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        placeholder="0.00"
+                        className="w-full px-2 py-1 text-xs border border-border rounded bg-background"
+                        value={atendimentoDesconto || ''}
+                        onChange={(e) => setAtendimentoDesconto(Number(e.target.value) || 0)}
+                        onBlur={salvarDadosAtendimento}
+                      />
                     </div>
                   </div>
                 </div> : <div className="text-center py-8">

@@ -18,9 +18,13 @@ const ProtectedRoute = ({ children, requireAuth = true, adminOnly = false }: Pro
     );
   }
 
-  // Se não requer autenticação e usuário está logado, redireciona para perfil
-  if (!requireAuth && currentUser) {
-    return <Navigate to="/profile" replace />;
+  // Se não requer autenticação e usuário está logado, redireciona baseado em isAdmin
+  if (!requireAuth && currentUser && userData) {
+    if (userData.isAdmin) {
+      return <Navigate to="/profile" replace />;
+    } else {
+      return <Navigate to="/profile-mobile" replace />;
+    }
   }
 
   // Se requer autenticação e usuário não está logado, redireciona para login
@@ -30,7 +34,7 @@ const ProtectedRoute = ({ children, requireAuth = true, adminOnly = false }: Pro
 
   // Se requer admin e usuário não é admin
   if (adminOnly && userData && !userData.isAdmin) {
-    return <Navigate to="/profile" replace />;
+    return <Navigate to="/profile-mobile" replace />;
   }
 
   return <>{children}</>;

@@ -73,40 +73,66 @@ export const AnaliseComandas = () => {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <RechartsPieChart>
-        <RechartsPie
-          data={data}
-          cx="50%"
-          cy="50%"
-          labelLine={false}
-          label={false}
-          outerRadius={80}
-          fill="#8884d8"
-          dataKey="value"
-        >
-          {data.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-          ))}
-        </RechartsPie>
-        <RechartsTooltip 
-          content={({ active, payload }) => {
-            if (active && payload && payload.length) {
-              const data = payload[0].payload;
-              return (
-                <div className="bg-background border border-border rounded-lg shadow-lg p-3 z-50">
-                  <p className="font-semibold text-sm">{data.name}</p>
-                  <p className="text-primary font-medium">Total Gasto: R$ {data.value.toLocaleString()}</p>
-                  <p className="text-muted-foreground text-xs">
-                    Participação: {total > 0 ? ((data.value / total) * 100).toFixed(1) : 0}%
-                  </p>
-                </div>
-              );
-            }
-            return null;
-          }}
-        />
-      </RechartsPieChart>
-    </ResponsiveContainer>
+    <div className="flex items-center gap-4 h-[300px]">
+      <div className="flex-1">
+        <ResponsiveContainer width="100%" height={300}>
+          <RechartsPieChart>
+            <RechartsPie
+              data={data}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={false}
+              outerRadius={70}
+              fill="#8884d8"
+              dataKey="value"
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </RechartsPie>
+            <RechartsTooltip 
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-background border border-border rounded-lg shadow-lg p-3 z-50">
+                      <p className="font-semibold text-sm">{data.name}</p>
+                      <p className="text-primary font-medium">Total Gasto: R$ {data.value.toLocaleString()}</p>
+                      <p className="text-muted-foreground text-xs">
+                        Participação: {total > 0 ? ((data.value / total) * 100).toFixed(1) : 0}%
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+          </RechartsPieChart>
+        </ResponsiveContainer>
+      </div>
+      
+      <div className="flex flex-col gap-2 justify-center min-w-[140px]">
+        {data.map((item, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <div 
+              className="w-3 h-3 rounded-full flex-shrink-0" 
+              style={{ backgroundColor: COLORS[index % COLORS.length] }}
+            />
+            <div className="flex flex-col">
+              <span 
+                className="text-xs font-medium truncate"
+                style={{ color: COLORS[index % COLORS.length] }}
+              >
+                {item.name}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                R$ {item.value.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 };

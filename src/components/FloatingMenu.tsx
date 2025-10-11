@@ -7,11 +7,11 @@ import SocialMediaCard from "./ui/social-media-card";
 
 const FloatingMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const { currentUser } = useAuth();
+  const { currentUser, userData } = useAuth();
   const location = useLocation();
 
-  // Não exibir na página inicial ou se usuário não autenticado
-  if (!currentUser || location.pathname === '/') {
+  // Não exibir na página inicial, se usuário não autenticado, ou se não for admin
+  if (!currentUser || location.pathname === '/' || !userData?.isAdmin) {
     return null;
   }
 
@@ -80,8 +80,8 @@ const FloatingMenu = () => {
         />
       )}
 
-      {/* Floating Menu Container */}
-      <div className="fixed bottom-6 right-6 z-50">
+      {/* Floating Menu Container - Oculto visualmente */}
+      <div className="fixed bottom-6 right-6 z-50 hidden">
         {/* Social Menu - Centered at bottom of screen */}
         <div
           className={cn(

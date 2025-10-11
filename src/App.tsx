@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { QueueAutomationProvider } from "./contexts/QueueAutomationContext";
+import { useTheme } from "./hooks/useTheme";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import AdminRoute from "./components/auth/AdminRoute";
 import ScrollToTop from "./components/ScrollToTop";
@@ -13,8 +15,8 @@ import Services from "./pages/Services";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
-import Booking from "./pages/Booking";
 import BookingLocal from "./pages/BookingLocal";
+import BookingMobile from "./pages/BookingMobile";
 import Queue from "./pages/Queue";
 import Admin from "./pages/Admin";
 import ServiceManagement from "./pages/ServiceManagement";
@@ -24,21 +26,23 @@ import PaymentSuccess from "./pages/PaymentSuccess";
 import PaymentError from "./pages/PaymentError";
 import PaymentPending from "./pages/PaymentPending";
 import Produtos from "./pages/Produtos";
+import ProfileMobile from "./pages/ProfileMobile";
+import PixPagamento from "./pages/PixPagamento";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <div>
-        <AuthProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <ScrollToTop />
-            <FloatingMenu />
-            <Routes>
+const AppContent = () => {
+  useTheme(); // Carrega e aplica o tema globalmente
+
+  return (
+    <>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <ScrollToTop />
+        <FloatingMenu />
+        <Routes>
             <Route path="/" element={
               <ProtectedRoute requireAuth={false}>
                 <Index />
@@ -64,14 +68,19 @@ const App = () => (
                 <Profile />
               </ProtectedRoute>
             } />
-            <Route path="/booking" element={
+            <Route path="/profile-mobile" element={
               <ProtectedRoute>
-                <Booking />
+                <ProfileMobile />
               </ProtectedRoute>
             } />
             <Route path="/booking-local" element={
               <ProtectedRoute>
                 <BookingLocal />
+              </ProtectedRoute>
+            } />
+            <Route path="/booking-mobile" element={
+              <ProtectedRoute>
+                <BookingMobile />
               </ProtectedRoute>
             } />
             <Route path="/queue" element={
@@ -119,12 +128,27 @@ const App = () => (
                 <PaymentPending />
               </ProtectedRoute>
             } />
+            <Route path="/pagamento/pix" element={
+              <ProtectedRoute>
+                <PixPagamento />
+              </ProtectedRoute>
+            } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-        </AuthProvider>
-      </div>
+        </Routes>
+      </BrowserRouter>
+    </>
+  );
+};
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <AuthProvider>
+        <QueueAutomationProvider>
+          <AppContent />
+        </QueueAutomationProvider>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

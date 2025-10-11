@@ -113,8 +113,8 @@ export const ClientDropdownSelector: React.FC<ClientDropdownSelectorProps> = ({
     }
   };
 
-  const CustomSelectContent = () => (
-    <SelectContent className="bg-background border border-border shadow-lg z-50">
+  const CustomSelectContent: React.FC<React.ComponentProps<typeof SelectContent>> = (contentProps) => (
+    <SelectContent {...contentProps} className="bg-background border border-border shadow-lg z-50">
       {/* Pesquisa dentro do dropdown */}
       <div className="p-2 border-b border-border">
         <div className="relative">
@@ -125,6 +125,9 @@ export const ClientDropdownSelector: React.FC<ClientDropdownSelectorProps> = ({
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 h-8"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            autoFocus={false}
           />
         </div>
       </div>
@@ -185,7 +188,10 @@ export const ClientDropdownSelector: React.FC<ClientDropdownSelectorProps> = ({
               placeholder
             } />
           </SelectTrigger>
-          <CustomSelectContent />
+          <CustomSelectContent 
+            onCloseAutoFocus={(e) => e.preventDefault()} 
+            onEscapeKeyDown={(e) => e.stopPropagation()} 
+          />
         </Select>
       </div>
 

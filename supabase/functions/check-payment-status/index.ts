@@ -8,8 +8,18 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url)
-    const paymentId = url.pathname.split('/').pop()
+    // Suportar tanto GET com ID no path quanto POST com body
+    let paymentId: string | null = null;
+
+    if (req.method === 'GET') {
+      // Método original: ID na URL
+      const url = new URL(req.url)
+      paymentId = url.pathname.split('/').pop() || null
+    } else if (req.method === 'POST') {
+      // Novo método: ID no body
+      const body = await req.json()
+      paymentId = body.paymentId
+    }
 
     if (!paymentId) {
       return new Response(
@@ -76,7 +86,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Erro interno do servidor',
-        details: error.message 
+        details: error instanceof Error ? error.message : String(error)
       }),
       { 
         status: 500, 

@@ -20,7 +20,6 @@ import { useToast } from '@/hooks/use-toast';
 import type { Comanda } from '@/hooks/useComandas';
 import { API_CONFIG, getHeaders } from '@/config/api';
 import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse, PaymentStatusResponse } from '@/types/mercadopago';
-import { ClientSelectionModal } from '@/components/ClientSelectionModal';
 
 interface PagamentoComandaModalProps {
   open: boolean;
@@ -91,7 +90,6 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'approved' | 'rejected' | 'cancelled'>('pending');
-  const [clientSelectionOpen, setClientSelectionOpen] = useState(false);
   const [selectedClientData, setSelectedClientData] = useState<ClienteData | null>(null);
   const [userData, setUserData] = useState<UserData>({
     firstName: '',
@@ -252,9 +250,10 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
   const startPaymentStatusPolling = (paymentId: string) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_PAYMENT_STATUS}/${paymentId}`, {
-          method: 'GET',
-          headers: getHeaders()
+        const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_PAYMENT_STATUS}`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ paymentId })
         });
 
         if (response.ok) {
@@ -295,17 +294,21 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
     setTimeout(() => clearInterval(interval), 600000);
   };
 
-  // Abrir modal de seleção de cliente para dinheiro físico
+  // Ir direto para confirmação usando dados da comanda
   const handleCashPayment = () => {
-    setClientSelectionOpen(true);
-  };
-
-  // Callback quando cliente é selecionado
-  const handleClientSelected = (clienteData: ClienteData) => {
-    setSelectedClientData(clienteData);
-    setClientSelectionOpen(false);
+    if (!comanda) return;
+    
+    // Popular dados do cliente da comanda
+    setSelectedClientData({
+      nome: comanda.cliente_nome || '',
+      email: comanda.cliente_email || '',
+      telefone: comanda.cliente_telefone || '',
+      cpf: comanda.cliente_cpf || ''
+    });
+    
     setStep('cash-confirm');
   };
+
 
   // Finalizar com dinheiro físico
   const finalizarComDinheiro = () => {
@@ -548,12 +551,6 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
           </div>
         )}
 
-        {/* Modal de Seleção de Cliente */}
-        <ClientSelectionModal
-          isOpen={clientSelectionOpen}
-          onClose={() => setClientSelectionOpen(false)}
-          onClientSelected={handleClientSelected}
-        />
       </DialogContent>
     </Dialog>
   );

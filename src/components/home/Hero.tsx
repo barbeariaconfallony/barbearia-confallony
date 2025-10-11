@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { Calendar, Scissors, Users } from "lucide-react";
+import { Calendar, Scissors, Users, ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import heroImage from "@/assets/barbershop-hero.jpg";
-import mustacheLogo from "@/assets/confallony-mustache-logo.png";
+import logoMain from "@/assets/confallony-logo-main.png";
 const Hero = () => {
   return <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background Image with Gradient Fade */}
@@ -24,10 +24,10 @@ const Hero = () => {
           {/* Logo and Main Heading */}
           <div className="space-y-4 sm:space-y-6">
             <div className="flex justify-center">
-              <img src={mustacheLogo} alt="Confallony Barbearia Logo" style={{
-              filter: 'drop-shadow(0 0 15px rgba(255, 255, 255, 0.3))',
+              <img src={logoMain} alt="Confallony Barbearia - Estilo Homem" className="h-48 sm:h-56 lg:h-64 w-auto" style={{
+              filter: 'drop-shadow(0 0 20px rgba(218, 165, 32, 0.4))',
               transition: 'filter 0.3s ease'
-            }} className="h-80 sm:h-60 lg:h-120 row-auto " />
+            }} />
             </div>
             <p className="text-base sm:text-xl lg:text-2xl text-foreground/90 max-w-3xl mx-auto leading-relaxed px-2">
               Tradição, estilo e modernidade em cada corte. 
@@ -60,12 +60,14 @@ const Hero = () => {
           {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 max-w-2xl mx-auto mt-12 sm:mt-16 px-4">
             <div className="text-center">
-              <div className="text-2xl sm:text-3xl font-bold text-primary">5000+</div>
-              <div className="text-sm sm:text-base text-muted-foreground">Clientes Satisfeitos</div>
+              <div className="text-2xl sm:text-3xl font-bold text-primary">1000+</div>
+              <div className="text-sm sm:text-base text-muted-foreground">Clientes Atendidos Mensalmente</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl sm:text-3xl font-bold text-primary">12</div>
-              <div className="text-sm sm:text-base text-muted-foreground">Serviços Premium</div>
+              <div className="text-2xl sm:text-3xl font-bold text-primary">12+</div>
+              <div className="text-sm sm:text-base text-muted-foreground">Serviços Diferenciados
+
+            </div>
             </div>
             <div className="text-center">
               <div className="text-2xl sm:text-3xl font-bold text-primary">15+</div>
@@ -77,9 +79,7 @@ const Hero = () => {
 
       {/* Scroll Indicator */}
       <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce z-20">
-        <div className="w-6 h-10 border-2 border-primary rounded-full flex justify-center">
-          <div className="w-1 h-3 bg-primary rounded-full mt-2 animate-pulse"></div>
-        </div>
+        <ChevronDown className="w-10 h-10 text-primary" strokeWidth={2.5} />
       </div>
     </section>;
 };

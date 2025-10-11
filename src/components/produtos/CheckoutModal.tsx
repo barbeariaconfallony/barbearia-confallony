@@ -18,11 +18,12 @@ import {
   Percent
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { API_CONFIG, getHeaders } from '@/config/api';
 import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse, PaymentStatusResponse } from '@/types/mercadopago';
 import { ClientSelectionModal } from '@/components/ClientSelectionModal';
+import { ClientDropdownSelector } from '@/components/ClientDropdownSelector';
 import { updateDoc, doc, addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CartItem {
   id: string;
@@ -108,6 +109,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'approved' | 'rejected' | 'cancelled'>('pending');
   const [clientSelectionOpen, setClientSelectionOpen] = useState(false);
   const [selectedClientData, setSelectedClientData] = useState<ClienteData | null>(null);
+  const [selectedPixClientData, setSelectedPixClientData] = useState<ClienteData | null>(null);
   const [discountPercent, setDiscountPercent] = useState<string>('');
   const [userData, setUserData] = useState<UserData>({
     firstName: '',
@@ -123,6 +125,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setPaymentData(null);
     setPaymentStatus('pending');
     setSelectedClientData(null);
+    setSelectedPixClientData(null);
     setDiscountPercent('');
     setUserData({ firstName: '', lastName: '', email: '', cpf: '' });
   };
@@ -202,8 +205,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     return true;
   };
 
-  // Salvar dados da venda
-  const saveVendaData = async (formaPagamento: string) => {
+  // Salvar dados da venda na coleção compras_finalizadas
+  const saveVendaData = async (formaPagamento: string, paymentId?: string) => {
     try {
       const vendaData = {
         data: new Date(),
@@ -215,7 +218,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           categoria: item.categoria,
           subtotal: item.preco * item.quantity
         })),
-        cliente: selectedClientData ? {
+        cliente: selectedPixClientData ? {
+          nome: selectedPixClientData.nome,
+          email: selectedPixClientData.email,
+          telefone: selectedPixClientData.telefone,
+          cpf: selectedPixClientData.cpf
+        } : selectedClientData ? {
           nome: selectedClientData.nome,
           email: selectedClientData.email,
           telefone: selectedClientData.telefone,
@@ -229,11 +237,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         desconto: discountAmount,  
         total: total,
         formaPagamento: formaPagamento,
-        status: 'finalizada'
+        status: 'finalizada',
+        payment_id: paymentId || null,
+        timestamp: new Date().getTime()
       };
 
-      await addDoc(collection(db, 'produtos_vendidos'), vendaData);
-      console.log('Dados da venda salvos com sucesso');
+      await addDoc(collection(db, 'compras_finalizadas'), vendaData);
+      console.log('Dados da venda salvos na coleção compras_finalizadas');
     } catch (error) {
       console.error('Erro ao salvar dados da venda:', error);
       throw new Error('Erro ao salvar dados da venda');
@@ -284,29 +294,34 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         }
       };
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CREATE_PIX_PAYMENT}`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(paymentRequest)
+      console.log('Enviando requisição para criar pagamento PIX:', paymentRequest);
+
+      const { data: result, error } = await supabase.functions.invoke('create-pix-payment', {
+        body: paymentRequest
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erro na API: ${response.status} - ${errorText}`);
+      if (error) {
+        console.error('Erro ao invocar função:', error);
+        throw new Error(`Erro ao criar pagamento: ${error.message}`);
       }
 
-      const result: MercadoPagoPaymentResponse = await response.json();
+      if (!result) {
+        throw new Error('Resposta vazia da função');
+      }
+
+      console.log('Pagamento PIX criado:', result);
+      const mercadoPagoResult = result as MercadoPagoPaymentResponse;
       
       const newPaymentData: PaymentData = {
-        id: result.id.toString(),
-        qr_code: result.point_of_interaction?.transaction_data?.qr_code || '',
-        qr_code_base64: result.point_of_interaction?.transaction_data?.qr_code_base64 || '',
-        ticket_url: result.point_of_interaction?.transaction_data?.ticket_url || '',
-        status: result.status as 'pending' | 'approved' | 'rejected' | 'cancelled'
+        id: mercadoPagoResult.id.toString(),
+        qr_code: mercadoPagoResult.point_of_interaction?.transaction_data?.qr_code || '',
+        qr_code_base64: mercadoPagoResult.point_of_interaction?.transaction_data?.qr_code_base64 || '',
+        ticket_url: mercadoPagoResult.point_of_interaction?.transaction_data?.ticket_url || '',
+        status: mercadoPagoResult.status as 'pending' | 'approved' | 'rejected' | 'cancelled'
       };
 
       setPaymentData(newPaymentData);
-      setPaymentStatus(result.status as 'pending' | 'approved' | 'rejected' | 'cancelled');
+      setPaymentStatus(mercadoPagoResult.status as 'pending' | 'approved' | 'rejected' | 'cancelled');
       setStep('pix-payment');
 
       toast({
@@ -315,7 +330,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       });
 
       // Inicia o polling para verificar status
-      startPaymentStatusPolling(result.id.toString());
+      startPaymentStatusPolling(mercadoPagoResult.id.toString());
     } catch (error) {
       console.error('Erro ao criar pagamento PIX:', error);
       toast({
@@ -328,34 +343,40 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   };
 
-  // Polling para verificar status do pagamento
+  // Polling para verificar status do pagamento (igual ao PixPayment)
   const startPaymentStatusPolling = (paymentId: string) => {
+    console.log(`Iniciando verificação de status para pagamento: ${paymentId}`);
+    
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_PAYMENT_STATUS}/${paymentId}`, {
-          method: 'GET',
-          headers: getHeaders()
+        const { data: statusData, error } = await supabase.functions.invoke('check-payment-status', {
+          body: { paymentId }
         });
 
-        if (response.ok) {
-          const statusData: PaymentStatusResponse = await response.json();
-          
+        if (error) {
+          console.error('Erro ao verificar status:', error);
+          return;
+        }
+
+        console.log('Status check response:', statusData);
+        
+        if (statusData && statusData.status) {
           if (statusData.status !== paymentStatus) {
             setPaymentStatus(statusData.status);
             
             if (statusData.status === 'approved') {
               clearInterval(interval);
               
-              // Atualizar estoque e salvar venda
+              // Atualizar estoque e salvar venda automaticamente
               try {
                 await Promise.all([
                   updateStock(),
-                  saveVendaData("PIX")
+                  saveVendaData("PIX", paymentId)
                 ]);
                 
                 toast({
                   title: "Pagamento aprovado! ✅",
-                  description: "Sua compra foi finalizada com sucesso."
+                  description: "Sua compra foi finalizada com sucesso e salva em compras_finalizadas."
                 });
                 
                 setTimeout(() => {
@@ -363,6 +384,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   handleClose();
                 }, 2000);
               } catch (error) {
+                console.error('Erro ao processar venda aprovada:', error);
                 toast({
                   title: "Pagamento aprovado, mas...",
                   description: "Houve um erro ao processar a venda. Verifique manualmente.",
@@ -372,20 +394,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             } else if (statusData.status === 'rejected' || statusData.status === 'cancelled') {
               clearInterval(interval);
               toast({
-                title: "Pagamento não aprovado",
-                description: "O pagamento PIX foi rejeitado ou cancelado.",
+                title: "Pagamento não processado",
+                description: "O pagamento PIX foi rejeitado ou cancelado. Tente novamente.",
                 variant: "destructive"
               });
             }
           }
         }
       } catch (error) {
-        console.error('Erro ao verificar status:', error);
+        console.error('Erro ao verificar status do pagamento:', error);
       }
-    }, 5000);
+    }, 5000); // Polling a cada 5 segundos
 
-    // Limpar o interval após 10 minutos
-    setTimeout(() => clearInterval(interval), 600000);
+    // Limpar o interval após 10 minutos (600 segundos)
+    setTimeout(() => {
+      clearInterval(interval);
+      console.log('Polling de status encerrado após 10 minutos');
+    }, 600000);
   };
 
   // Abrir modal de seleção de cliente para dinheiro físico
@@ -394,11 +419,33 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setClientSelectionOpen(true);
   };
 
-  // Callback quando cliente é selecionado
+  // Callback quando cliente é selecionado (Dinheiro)
   const handleClientSelected = (clienteData: ClienteData) => {
     setSelectedClientData(clienteData);
     setClientSelectionOpen(false);
     setStep('cash-confirm');
+  };
+
+  // Callback quando cliente é selecionado (PIX)
+  const handlePixClientSelected = (clienteData: ClienteData) => {
+    setSelectedPixClientData(clienteData);
+    // Preencher os campos do formulário com os dados do cliente
+    const nomeCompleto = clienteData.nome.split(' ');
+    const firstName = nomeCompleto[0] || '';
+    const lastName = nomeCompleto.slice(1).join(' ') || '';
+    
+    setUserData({
+      firstName: firstName,
+      lastName: lastName,
+      email: clienteData.email,
+      cpf: clienteData.cpf !== 'não inserido' ? clienteData.cpf : ''
+    });
+  };
+
+  // Limpar seleção de cliente PIX
+  const clearPixClientSelection = () => {
+    setSelectedPixClientData(null);
+    setUserData({ firstName: '', lastName: '', email: '', cpf: '' });
   };
 
   // Finalizar com dinheiro físico
@@ -408,12 +455,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     try {
       await Promise.all([
         updateStock(),
-        saveVendaData("Dinheiro Físico")
+        saveVendaData("Dinheiro Físico", undefined)
       ]);
       
       toast({
         title: "Pagamento confirmado!",
-        description: "Compra finalizada com pagamento em dinheiro físico."
+        description: "Compra finalizada com pagamento em dinheiro físico e salva em compras_finalizadas."
       });
       
       onCheckoutCompleto("Dinheiro Físico");
@@ -547,6 +594,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <h3 className="font-medium">Dados do Pagador</h3>
               </div>
 
+              {/* Dropdown de seleção de cliente */}
+              <ClientDropdownSelector
+                onClientSelected={handlePixClientSelected}
+                label="Selecionar cliente cadastrado (opcional):"
+                placeholder="Escolha um cliente ou preencha manualmente"
+              />
+
+              {selectedPixClientData && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearPixClientSelection}
+                  className="w-full"
+                >
+                  Limpar seleção e preencher manualmente
+                </Button>
+              )}
+
+              <Separator />
+
               <div className="space-y-3">
                 <div>
                   <Label htmlFor="firstName">Nome</Label>
@@ -555,6 +622,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     value={userData.firstName}
                     onChange={(e) => setUserData(prev => ({ ...prev, firstName: e.target.value }))}
                     placeholder="Nome"
+                    disabled={!!selectedPixClientData}
                   />
                 </div>
                 
@@ -565,6 +633,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     value={userData.lastName}
                     onChange={(e) => setUserData(prev => ({ ...prev, lastName: e.target.value }))}
                     placeholder="Sobrenome"
+                    disabled={!!selectedPixClientData}
                   />
                 </div>
                 
@@ -576,6 +645,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     value={userData.email}
                     onChange={(e) => setUserData(prev => ({ ...prev, email: e.target.value }))}
                     placeholder="email@exemplo.com"
+                    disabled={!!selectedPixClientData}
                   />
                 </div>
                 
@@ -587,6 +657,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     onChange={(e) => setUserData(prev => ({ ...prev, cpf: formatCPF(e.target.value) }))}
                     placeholder="000.000.000-00"
                     maxLength={14}
+                    disabled={!!selectedPixClientData}
                   />
                 </div>
               </div>
