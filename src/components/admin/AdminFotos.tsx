@@ -63,6 +63,8 @@ export const AdminFotos = () => {
   const [clienteSearchTerm, setClienteSearchTerm] = useState("");
   const [captureMode, setCaptureMode] = useState<'camera' | 'file'>('camera');
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string>("");
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   const {
     isCapturing,
@@ -722,15 +724,18 @@ export const AdminFotos = () => {
                            alt={`${fotoCliente.cliente_nome} - Foto ${index + 1}`}
                            className="w-full aspect-square object-cover rounded-lg"
                          />
-                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2">
-                           <Button
-                             size="sm"
-                             variant="secondary"
-                             onClick={() => window.open(foto, '_blank')}
-                           >
-                             <Eye className="h-3 w-3 mr-1" />
-                             Ver
-                           </Button>
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                setSelectedImageUrl(foto);
+                                setIsImageModalOpen(true);
+                              }}
+                            >
+                              <Eye className="h-3 w-3 mr-1" />
+                              Ver
+                            </Button>
                            <Button
                              size="sm"
                              variant="destructive"
@@ -768,6 +773,22 @@ export const AdminFotos = () => {
           )}
         </div>
       )}
+
+      {/* Modal de visualização de imagem */}
+      <Dialog open={isImageModalOpen} onOpenChange={setIsImageModalOpen}>
+        <DialogContent className="max-w-6xl max-h-[95vh] p-2">
+          <DialogHeader className="px-4 pt-4">
+            <DialogTitle>Visualizar Foto</DialogTitle>
+          </DialogHeader>
+          <div className="relative flex items-center justify-center p-4 max-h-[80vh] overflow-hidden">
+            <img
+              src={selectedImageUrl}
+              alt="Foto do cliente"
+              className="max-w-full max-h-[75vh] object-contain rounded-lg"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { QueueItemActionsModal } from "@/components/QueueItemActionsModal";
 import { UltimosAgendamentos } from "@/components/UltimosAgendamentos";
+import { NotificarClienteModal } from "@/components/NotificarClienteModal";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, Users, CheckCircle, AlertCircle, User, Scissors, ChevronRight, Calendar, TrendingUp, Star, Check, Timer, UserCheck, Play, Pause, CreditCard, Banknote, Palette, Sparkles, Zap, Heart, Ruler, Copy } from "lucide-react";
+import { Clock, Users, CheckCircle, AlertCircle, User, Scissors, ChevronRight, Calendar, TrendingUp, Star, Check, Timer, UserCheck, Play, Pause, CreditCard, Banknote, Palette, Sparkles, Zap, Heart, Ruler, Copy, MessageSquare } from "lucide-react";
 import { format, differenceInSeconds, addMinutes, isAfter, parse, isToday, isSameDay, startOfDay, endOfDay, isBefore } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -83,6 +84,8 @@ const Queue = () => {
   const [currentDate, setCurrentDate] = useState<string>('');
   const [selectedQueueItem, setSelectedQueueItem] = useState<QueueItem | null>(null);
   const [showActionsModal, setShowActionsModal] = useState(false);
+  const [showNotificarModal, setShowNotificarModal] = useState(false);
+  const [clienteParaNotificar, setClienteParaNotificar] = useState<QueueItem | null>(null);
   const [activeTab, setActiveTab] = useState<string>('geral');
   const [tabs, setTabs] = useState<TabInfo[]>([]);
   const [userDetails, setUserDetails] = useState<{
@@ -377,6 +380,17 @@ const Queue = () => {
   const handleCloseActionsModal = () => {
     setShowActionsModal(false);
     setSelectedQueueItem(null);
+  };
+
+  const handleNotificarCliente = (item: QueueItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setClienteParaNotificar(item);
+    setShowNotificarModal(true);
+  };
+
+  const handleCloseNotificarModal = () => {
+    setShowNotificarModal(false);
+    setClienteParaNotificar(null);
   };
 
   // Função para obter ícone da sala
@@ -722,154 +736,159 @@ const Queue = () => {
 
                   {/* Inputs para detalhes do atendimento */}
                   <div className="space-y-3">
-                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Ruler className="h-4 w-4 text-primary" />
-                      Numerações Usadas no Corte
-                      <span className="ml-auto text-xs font-normal text-muted-foreground">
-                        {Object.keys(alturasCorte).filter(k => alturasCorte[k as keyof AlturasCorte] !== undefined && k !== 'observacao_extra').length} de 6 preenchidas
-                      </span>
-                    </h4>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Lateral Esquerda (mm)</label>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          max="25"
-                          step="0.5"
-                          placeholder="Ex: 2"
-                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
-                          value={alturasCorte.lateral_esquerda ?? ''}
-                          onChange={(e) => {
-                            const newValue = e.target.value ? Number(e.target.value) : undefined;
-                            setAlturasCorte(prev => ({...prev, lateral_esquerda: newValue}));
+                    {/* Mostrar numerações apenas para Geral e Barbearia */}
+                    {(activeTab === 'geral' || activeTab.toLowerCase().includes('barbearia')) && (
+                      <>
+                        <h4 className="text-sm font-semibold flex items-center gap-2">
+                          <Ruler className="h-4 w-4 text-primary" />
+                          Numerações Usadas no Corte
+                          <span className="ml-auto text-xs font-normal text-muted-foreground">
+                            {Object.keys(alturasCorte).filter(k => alturasCorte[k as keyof AlturasCorte] !== undefined && k !== 'observacao_extra').length} de 6 preenchidas
+                          </span>
+                        </h4>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">Lateral Esquerda (mm)</label>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="25"
+                              step="0.5"
+                              placeholder="Ex: 2"
+                              className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                              value={alturasCorte.lateral_esquerda ?? ''}
+                              onChange={(e) => {
+                                const newValue = e.target.value ? Number(e.target.value) : undefined;
+                                setAlturasCorte(prev => ({...prev, lateral_esquerda: newValue}));
+                              }}
+                              onBlur={salvarDadosAtendimento}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">Lateral Direita (mm)</label>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="25"
+                              step="0.5"
+                              placeholder="Ex: 2"
+                              className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                              value={alturasCorte.lateral_direita ?? ''}
+                              onChange={(e) => setAlturasCorte(prev => ({
+                                ...prev, 
+                                lateral_direita: e.target.value ? Number(e.target.value) : undefined
+                              }))}
+                              onBlur={salvarDadosAtendimento}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">Nuca (mm)</label>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="25"
+                              step="0.5"
+                              placeholder="Ex: 1"
+                              className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                              value={alturasCorte.nuca ?? ''}
+                              onChange={(e) => setAlturasCorte(prev => ({
+                                ...prev, 
+                                nuca: e.target.value ? Number(e.target.value) : undefined
+                              }))}
+                              onBlur={salvarDadosAtendimento}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">Topo (mm)</label>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="25"
+                              step="0.5"
+                              placeholder="Ex: 8"
+                              className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                              value={alturasCorte.topo ?? ''}
+                              onChange={(e) => setAlturasCorte(prev => ({
+                                ...prev, 
+                                topo: e.target.value ? Number(e.target.value) : undefined
+                              }))}
+                              onBlur={salvarDadosAtendimento}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">Frente (mm)</label>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="25"
+                              step="0.5"
+                              placeholder="Ex: 8"
+                              className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                              value={alturasCorte.frente ?? ''}
+                              onChange={(e) => setAlturasCorte(prev => ({
+                                ...prev, 
+                                frente: e.target.value ? Number(e.target.value) : undefined
+                              }))}
+                              onBlur={salvarDadosAtendimento}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">Barba (mm)</label>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="25"
+                              step="0.5"
+                              placeholder="Ex: 3"
+                              className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
+                              value={alturasCorte.barba ?? ''}
+                              onChange={(e) => setAlturasCorte(prev => ({
+                                ...prev, 
+                                barba: e.target.value ? Number(e.target.value) : undefined
+                              }))}
+                              onBlur={salvarDadosAtendimento}
+                            />
+                          </div>
+                        </div>
+                        
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs"
+                          onClick={() => {
+                            if (alturasCorte.lateral_esquerda !== undefined) {
+                              setAlturasCorte(prev => ({
+                                ...prev,
+                                lateral_direita: prev.lateral_esquerda
+                              }));
+                            }
                           }}
-                          onBlur={salvarDadosAtendimento}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Lateral Direita (mm)</label>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          max="25"
-                          step="0.5"
-                          placeholder="Ex: 2"
-                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
-                          value={alturasCorte.lateral_direita ?? ''}
-                          onChange={(e) => setAlturasCorte(prev => ({
-                            ...prev, 
-                            lateral_direita: e.target.value ? Number(e.target.value) : undefined
-                          }))}
-                          onBlur={salvarDadosAtendimento}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Nuca (mm)</label>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          max="25"
-                          step="0.5"
-                          placeholder="Ex: 1"
-                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
-                          value={alturasCorte.nuca ?? ''}
-                          onChange={(e) => setAlturasCorte(prev => ({
-                            ...prev, 
-                            nuca: e.target.value ? Number(e.target.value) : undefined
-                          }))}
-                          onBlur={salvarDadosAtendimento}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Topo (mm)</label>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          max="25"
-                          step="0.5"
-                          placeholder="Ex: 8"
-                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
-                          value={alturasCorte.topo ?? ''}
-                          onChange={(e) => setAlturasCorte(prev => ({
-                            ...prev, 
-                            topo: e.target.value ? Number(e.target.value) : undefined
-                          }))}
-                          onBlur={salvarDadosAtendimento}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Frente (mm)</label>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          max="25"
-                          step="0.5"
-                          placeholder="Ex: 8"
-                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
-                          value={alturasCorte.frente ?? ''}
-                          onChange={(e) => setAlturasCorte(prev => ({
-                            ...prev, 
-                            frente: e.target.value ? Number(e.target.value) : undefined
-                          }))}
-                          onBlur={salvarDadosAtendimento}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Barba (mm)</label>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          max="25"
-                          step="0.5"
-                          placeholder="Ex: 3"
-                          className="w-full px-2 py-1 text-sm border border-border rounded bg-background"
-                          value={alturasCorte.barba ?? ''}
-                          onChange={(e) => setAlturasCorte(prev => ({
-                            ...prev, 
-                            barba: e.target.value ? Number(e.target.value) : undefined
-                          }))}
-                          onBlur={salvarDadosAtendimento}
-                        />
-                      </div>
-                    </div>
-                    
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-xs"
-                      onClick={() => {
-                        if (alturasCorte.lateral_esquerda !== undefined) {
-                          setAlturasCorte(prev => ({
-                            ...prev,
-                            lateral_direita: prev.lateral_esquerda
-                          }));
-                        }
-                      }}
-                    >
-                      Igualar Laterais
-                    </Button>
-                    
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground">Observações Extras</label>
-                      <textarea 
-                        placeholder="Ex: Degradê alto, tesoura no topo, barba aparada..."
-                        className="w-full h-16 px-2 py-1 text-xs border border-border rounded resize-none bg-background"
-                        value={alturasCorte.observacao_extra ?? ''}
-                        onChange={(e) => setAlturasCorte(prev => ({
-                          ...prev,
-                          observacao_extra: e.target.value
-                        }))}
-                        onBlur={salvarDadosAtendimento}
-                      />
-                    </div>
+                        >
+                          Igualar Laterais
+                        </Button>
+                        
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">Observações Extras</label>
+                          <textarea 
+                            placeholder="Ex: Degradê alto, tesoura no topo, barba aparada..."
+                            className="w-full h-16 px-2 py-1 text-xs border border-border rounded resize-none bg-background"
+                            value={alturasCorte.observacao_extra ?? ''}
+                            onChange={(e) => setAlturasCorte(prev => ({
+                              ...prev,
+                              observacao_extra: e.target.value
+                            }))}
+                            onBlur={salvarDadosAtendimento}
+                          />
+                        </div>
+                      </>
+                    )}
                     
                     <div>
                       <label className="text-xs font-medium text-muted-foreground">Desconto (R$)</label>
@@ -966,25 +985,6 @@ const Queue = () => {
                   {/* Últimos Agendamentos - componente atualizado */}
                   <UltimosAgendamentos userEmail={nextService?.usuario_email || ''} maxItems={3} compact={true} />
 
-                  {/* Inputs para detalhes do próximo atendimento */}
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-semibold flex items-center gap-2">
-                      <Scissors className="h-4 w-4 text-primary" />
-                      Preparação do Atendimento
-                    </h4>
-                    
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-muted-foreground">Observações</label>
-                      <textarea placeholder="Notas para o próximo atendimento..." className="w-full h-12 px-2 py-1 text-xs border border-border rounded resize-none bg-background" />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Desconto (R$)</label>
-                        <input type="number" step="0.01" placeholder="0.00" className="w-full px-2 py-1 text-xs border border-border rounded bg-background" />
-                      </div>
-                    </div>
-                  </div>
                 </div> : <div className="text-center py-8">
                   <Users className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
                   <p className="text-sm text-muted-foreground">Nenhum próximo agendamento</p>
@@ -1080,7 +1080,7 @@ const Queue = () => {
               return <div key={item.id} className={`flex items-center justify-between p-3 rounded-lg border transition-colors cursor-pointer hover:opacity-80 ${cardStyle}`} style={!isPresent && !isFirst ? {
                 opacity: blinkingOpacity
               } : {}} onClick={() => handleQueueItemClick(item)}>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1">
                           <Badge variant={isFirst ? "default" : isPresent ? "outline" : "destructive"} className="min-w-[2.5rem] justify-center text-xs">
                             #{(index + 1).toString().padStart(2, '0')}
                           </Badge>
@@ -1089,7 +1089,7 @@ const Queue = () => {
                               {item.usuario_nome.charAt(0).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
-                          <div>
+                          <div className="flex-1">
                             <p className="font-medium text-foreground text-sm">{item.usuario_nome}</p>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <span>{item.servico_nome} • {item.tempo_estimado} min</span>
@@ -1105,13 +1105,24 @@ const Queue = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <Badge variant={isFirst ? "default" : isPresent ? "secondary" : "destructive"} className="text-xs">
-                            {isFirst ? 'Próximo' : isPresent ? 'Presente' : 'Ausente'}
-                          </Badge>
-                          {item.tempo_inicio && <p className="text-xs text-muted-foreground mt-1">
-                              {isToday(item.tempo_inicio) ? format(item.tempo_inicio, 'HH:mm') : format(item.tempo_inicio, 'dd/MM HH:mm')}
-                            </p>}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => handleNotificarCliente(item, e)}
+                            title="Notificar cliente"
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                          </Button>
+                          <div className="text-right">
+                            <Badge variant={isFirst ? "default" : isPresent ? "secondary" : "destructive"} className="text-xs">
+                              {isFirst ? 'Próximo' : isPresent ? 'Presente' : 'Ausente'}
+                            </Badge>
+                            {item.tempo_inicio && <p className="text-xs text-muted-foreground mt-1">
+                                {isToday(item.tempo_inicio) ? format(item.tempo_inicio, 'HH:mm') : format(item.tempo_inicio, 'dd/MM HH:mm')}
+                              </p>}
+                          </div>
                         </div>
                       </div>;
             })}
@@ -1173,6 +1184,15 @@ const Queue = () => {
 
         {/* Modal de ações do item da fila */}
         <QueueItemActionsModal isOpen={showActionsModal} onClose={handleCloseActionsModal} item={selectedQueueItem} />
+        
+        {/* Modal de notificação de cliente */}
+        <NotificarClienteModal 
+          isOpen={showNotificarModal} 
+          onClose={handleCloseNotificarModal} 
+          clienteNome={clienteParaNotificar?.usuario_nome || ''}
+          clienteTelefone={clienteParaNotificar?.usuario_telefone}
+          horarioAgendado={clienteParaNotificar?.tempo_inicio}
+        />
       </Layout>;
 };
 export default Queue;

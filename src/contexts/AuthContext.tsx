@@ -9,6 +9,7 @@ import {
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface UserData {
   uid: string;
@@ -29,6 +30,7 @@ export interface UserData {
 interface AuthContextType {
   currentUser: User | null;
   userData: UserData | null;
+  userRoles: string[];
   loading: boolean;
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (userData: Omit<UserData, 'uid' | 'data_registro' | 'pontos_fidelidade' | 'saldo' | 'isAdmin' | 'ativo'>, password: string) => Promise<void>;
@@ -53,8 +55,31 @@ interface AuthProviderProps {
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+
+  // Buscar roles do Supabase
+  const loadUserRoles = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Erro ao buscar roles:', error);
+        return [];
+      }
+
+      const roles = data?.map(r => r.role) || [];
+      setUserRoles(roles);
+      return roles;
+    } catch (error) {
+      console.error('Erro ao buscar roles:', error);
+      return [];
+    }
+  };
 
   // Carrega dados do usuário do Firestore
   const loadUserData = async (user: User) => {
@@ -311,12 +336,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setCurrentUser(user);
         try {
           await loadUserData(user);
+          await loadUserRoles(user.uid);
         } catch (error) {
           console.error('Erro ao carregar dados do usuário:', error);
         }
       } else {
         setCurrentUser(null);
         setUserData(null);
+        setUserRoles([]);
         localStorage.removeItem('userData');
       }
       setLoading(false);
@@ -335,6 +362,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const value = {
     currentUser,
     userData,
+    userRoles,
     loading,
     login,
     register,

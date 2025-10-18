@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { shouldShowFullscreenButton } from "@/utils/device-detection";
 import logoIcon from "@/assets/confallony-logo-icon.png";
+import maleProfileAvatar from "@/assets/male-profile-avatar.jpg";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const Navbar = () => {
@@ -70,6 +71,15 @@ const Navbar = () => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
+
+  // Adiciona/remove classe no body quando navbar muda de visibilidade
+  useEffect(() => {
+    if (navbarVisible) {
+      document.body.classList.remove('navbar-hidden');
+    } else {
+      document.body.classList.add('navbar-hidden');
+    }
+  }, [navbarVisible]);
   const toggleMenu = () => setIsOpen(!isOpen);
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -106,6 +116,7 @@ const Navbar = () => {
   const currentUserData = getUserData();
   const displayName = currentUserData?.nome || currentUser?.displayName || 'Usuário';
   const displayEmail = currentUserData?.email || currentUser?.email || '';
+  const avatarUrl = currentUserData?.avatar_url || maleProfileAvatar;
   return <>
       {/* Botão flutuante para mostrar/ocultar navbar */}
       <button onClick={toggleNavbarVisibility} className={`fixed right-4 z-50 p-2 rounded-full bg-primary text-white shadow-lg transition-all duration-300 ${navbarVisible ? 'top-16 opacity-70 hover:opacity-100' : 'top-4 opacity-15 hover:opacity-100'}`} aria-label={navbarVisible ? "Ocultar barra de navegação" : "Mostrar barra de navegação"}>
@@ -153,7 +164,7 @@ const Navbar = () => {
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-2 px-3 py-2 h-auto whitespace-nowrap">
                       <Avatar className="h-8 w-8 flex-shrink-0">
-                        <AvatarImage src={currentUserData?.avatar_url} />
+                        <AvatarImage src={avatarUrl} />
                         <AvatarFallback>
                           {getInitials(displayName)}
                         </AvatarFallback>
@@ -169,7 +180,7 @@ const Navbar = () => {
                     <div className="p-2">
                       <div className="flex items-center gap-2">
                         <Avatar className="h-10 w-10">
-                          <AvatarImage src={currentUserData?.avatar_url} />
+                          <AvatarImage src={avatarUrl} />
                           <AvatarFallback>
                             {getInitials(displayName)}
                           </AvatarFallback>
@@ -270,7 +281,7 @@ const Navbar = () => {
                 <div className="border-t border-border pt-4 mt-4">
                   <div className="flex items-center px-4 py-3 mb-3 bg-accent/30 rounded-lg">
                     <Avatar className="h-10 w-10 mr-3">
-                      <AvatarImage src={currentUserData?.avatar_url} />
+                      <AvatarImage src={avatarUrl} />
                       <AvatarFallback>
                         {getInitials(displayName)}
                       </AvatarFallback>

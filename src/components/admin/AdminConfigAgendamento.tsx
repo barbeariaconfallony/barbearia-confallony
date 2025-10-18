@@ -195,7 +195,7 @@ export const AdminConfigAgendamento: React.FC = () => {
                       Selecione os horários em que os agendamentos estarão disponíveis
                     </p>
                   </div>
-                  <div className="space-x-2">
+                  <div className="flex flex-col space-y-2">
                     <Button
                       variant="outline"
                       size="sm"

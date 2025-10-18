@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Plus, Edit, Trash2, Check, Scissors, Search, CreditCard, Banknote } from "lucide-react";
+import { Plus, Edit, Trash2, Check, Scissors, Search, CreditCard, Banknote, User, AlertTriangle, TrendingUp, Package } from "lucide-react";
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,10 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useComandas } from "@/hooks/useComandas";
+import { useEstoque } from "@/hooks/useEstoque";
 import { NovaComandaModal } from "@/components/comandas/NovaComandaModal";
 import { EditarComandaModal } from "@/components/comandas/EditarComandaModal";
 import { PagamentoComandaModal } from "@/components/comandas/PagamentoComandaModal";
+import { HistoricoClienteModal } from "@/components/comandas/HistoricoClienteModal";
+import { MetricasComparativasCard } from "@/components/comandas/MetricasComparativasCard";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Comandas = () => {
   const [selectedComandaId, setSelectedComandaId] = useState<string>("");
@@ -18,9 +23,14 @@ const Comandas = () => {
   const [novaComandaOpen, setNovaComandaOpen] = useState(false);
   const [editarComandaOpen, setEditarComandaOpen] = useState(false);
   const [pagamentoComandaOpen, setPagamentoComandaOpen] = useState(false);
+  const [historicoClienteOpen, setHistoricoClienteOpen] = useState(false);
+  const [selectedClienteId, setSelectedClienteId] = useState<string>("");
+  const [selectedClienteNome, setSelectedClienteNome] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [currentPageAbertas, setCurrentPageAbertas] = useState(1);
   const [currentPageFinalizadas, setCurrentPageFinalizadas] = useState(1);
+  const [metricasModalOpen, setMetricasModalOpen] = useState(false);
+  const [estoqueModalOpen, setEstoqueModalOpen] = useState(false);
   
   const ITEMS_PER_PAGE = 3;
   
@@ -34,6 +44,8 @@ const Comandas = () => {
     atualizarComanda, 
     finalizarComanda 
   } = useComandas();
+
+  const { produtosEstoqueBaixo, loading: loadingEstoque } = useEstoque();
 
   // Filtrar comandas por nome do cliente
   const filteredComandas = useMemo(() => {
@@ -82,12 +94,19 @@ const Comandas = () => {
     setSelectedComandaId(paginatedComandas[0].id);
   }
 
+  const handleVerHistorico = (clienteId: string, clienteNome: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedClienteId(clienteId);
+    setSelectedClienteNome(clienteNome);
+    setHistoricoClienteOpen(true);
+  };
+
   const renderComandaCard = (comanda: any) => (
     <Card 
       key={comanda.id} 
-      className={`cursor-pointer transition-all duration-200 ${
+      className={`cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
         selectedComandaId === comanda.id 
-          ? 'bg-primary/10 border-primary shadow-sm' 
+          ? 'bg-primary/10 border-primary shadow-sm animate-fade-in' 
           : 'hover:bg-muted/50 hover:shadow-sm'
       }`}
       onClick={() => setSelectedComandaId(comanda.id)}
@@ -115,7 +134,18 @@ const Comandas = () => {
             )}
           </div>
         </div>
-        <h4 className="text-sm font-medium mb-1 line-clamp-1">{comanda.cliente_nome}</h4>
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="text-sm font-medium line-clamp-1 flex-1">{comanda.cliente_nome}</h4>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 hover:bg-primary/10"
+            onClick={(e) => handleVerHistorico(comanda.cliente_id, comanda.cliente_nome, e)}
+            title="Ver histórico do cliente"
+          >
+            <User className="h-3 w-3" />
+          </Button>
+        </div>
         <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
           {comanda.status === 'Finalizada' ? (
             <>
@@ -149,10 +179,101 @@ const Comandas = () => {
 
   return (
     <Layout>
-      <div className="container mx-auto p-6">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">Comandas</h1>
-          <p className="text-muted-foreground">Gerencie as comandas abertas da barbearia</p>
+      <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="mb-4 sm:mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Comandas</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Gerencie as comandas abertas do estabelecimento</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Modal de Métricas Comparativas */}
+            <Dialog open={metricasModalOpen} onOpenChange={setMetricasModalOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="icon" className="h-10 w-10">
+                  <TrendingUp className="h-5 w-5" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Comparativo de Períodos</DialogTitle>
+                </DialogHeader>
+                <MetricasComparativasCard />
+              </DialogContent>
+            </Dialog>
+
+            {/* Modal de Alertas de Estoque */}
+            <Dialog open={estoqueModalOpen} onOpenChange={setEstoqueModalOpen}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className={`h-10 w-10 relative ${
+                    produtosEstoqueBaixo.length > 0 
+                      ? 'border-orange-500 hover:bg-orange-500/10' 
+                      : ''
+                  }`}
+                >
+                  <Package 
+                    className={`h-5 w-5 ${
+                      produtosEstoqueBaixo.length > 0 
+                        ? 'text-orange-500' 
+                        : ''
+                    }`} 
+                  />
+                  {produtosEstoqueBaixo.length > 0 && (
+                    <span className="absolute -top-1 -right-1 h-5 w-5 bg-orange-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                      {produtosEstoqueBaixo.length}
+                    </span>
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-orange-600">
+                    <AlertTriangle className="h-5 w-5" />
+                    Alertas de Estoque ({produtosEstoqueBaixo.length})
+                  </DialogTitle>
+                </DialogHeader>
+                <ScrollArea className="max-h-[400px] pr-4">
+                  {loadingEstoque ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <div className="text-sm">Carregando...</div>
+                    </div>
+                  ) : produtosEstoqueBaixo.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <div className="text-sm">Nenhum produto com estoque baixo</div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {produtosEstoqueBaixo.map((produto) => (
+                        <div 
+                          key={produto.id} 
+                          className="flex items-center justify-between p-3 bg-orange-500/5 rounded-lg border border-orange-500/20 hover:bg-orange-500/10 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <Package className="h-5 w-5 text-orange-600 flex-shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium truncate">{produto.produto_nome}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Estoque mínimo: {produto.quantidade_minima} {produto.unidade}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge 
+                            variant="destructive" 
+                            className="ml-2 flex-shrink-0 bg-orange-600 hover:bg-orange-700"
+                          >
+                            {produto.quantidade_disponivel} {produto.unidade}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 lg:gap-6 min-h-[calc(100vh-200px)]">
@@ -424,10 +545,17 @@ const Comandas = () => {
               </Card>
             )}
           </div>
-        </div>
+      </div>
 
-        {/* Modais */}
-        <NovaComandaModal
+      {/* Modais */}
+      <HistoricoClienteModal
+        open={historicoClienteOpen}
+        onOpenChange={setHistoricoClienteOpen}
+        clienteId={selectedClienteId}
+        clienteNome={selectedClienteNome}
+      />
+
+      <NovaComandaModal
           open={novaComandaOpen}
           onOpenChange={setNovaComandaOpen}
           usuarios={usuarios}

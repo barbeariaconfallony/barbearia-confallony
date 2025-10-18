@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, DollarSign, Package, Camera, X, SwitchCamera } from "lucide-react";
 import { useCameraCapture } from "@/hooks/useCameraCapture";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Product {
   id: string;
@@ -21,6 +22,7 @@ interface Product {
   descricao: string;
   preco: number;
   estoque: number;
+  estoque_minimo?: number;
   categoria: string;
   tipo_venda?: string;
   ativo: boolean;
@@ -48,11 +50,13 @@ const ProductManagement = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [currentTab, setCurrentTab] = useState<"comanda" | "barbearia">("comanda");
+  const [showLowStock, setShowLowStock] = useState(false);
   const [formData, setFormData] = useState({
     nome: "",
     descricao: "",
     preco: "",
     estoque: "",
+    estoque_minimo: "",
     categoria: "",
     tipo_venda: "",
     imageUrl: ""
@@ -106,7 +110,16 @@ const ProductManagement = () => {
   };
 
   const getFilteredProducts = (tipo: "comanda" | "barbearia") => {
-    return products.filter(product => product.tipo_venda === tipo);
+    let filtered = products.filter(product => product.tipo_venda === tipo);
+    
+    if (showLowStock) {
+      filtered = filtered.filter(product => {
+        const estoqueMinimo = product.estoque_minimo || 0;
+        return estoqueMinimo > 0 && product.estoque <= estoqueMinimo;
+      });
+    }
+    
+    return filtered;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -132,6 +145,7 @@ const ProductManagement = () => {
         descricao: formData.descricao,
         preco: parseFloat(formData.preco),
         estoque: parseInt(formData.estoque) || 0,
+        estoque_minimo: parseInt(formData.estoque_minimo) || 0,
         categoria: formData.categoria,
         tipo_venda: tipoVenda,
         imageUrl: formData.imageUrl || capturedImageUrl || "",
@@ -156,7 +170,7 @@ const ProductManagement = () => {
         });
       }
 
-      setFormData({ nome: "", descricao: "", preco: "", estoque: "", categoria: "", tipo_venda: "", imageUrl: "" });
+      setFormData({ nome: "", descricao: "", preco: "", estoque: "", estoque_minimo: "", categoria: "", tipo_venda: "", imageUrl: "" });
       setEditingProduct(null);
       setIsDialogOpen(false);
       stopCapture(); // Encerrar câmera após salvar
@@ -181,6 +195,7 @@ const ProductManagement = () => {
       descricao: product.descricao,
       preco: product.preco.toString(),
       estoque: product.estoque.toString(),
+      estoque_minimo: product.estoque_minimo?.toString() || "0",
       categoria: product.categoria,
       tipo_venda: product.tipo_venda || "",
       imageUrl: product.imageUrl || ""
@@ -283,9 +298,18 @@ const ProductManagement = () => {
             {product.ativo ? "Ativo" : "Inativo"}
           </Badge>
         </div>
-        <Badge variant="outline" className="w-fit">
-          {product.categoria}
-        </Badge>
+        <div className="flex gap-2">
+          <Badge variant="outline" className="w-fit">
+            {product.categoria}
+          </Badge>
+          {product.estoque_minimo !== undefined && 
+           product.estoque_minimo > 0 && 
+           product.estoque <= product.estoque_minimo && (
+            <Badge variant="destructive" className="w-fit bg-orange-600 hover:bg-orange-700">
+              Estoque Baixo
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Imagem do Produto */}
@@ -307,9 +331,16 @@ const ProductManagement = () => {
             <DollarSign className="h-4 w-4" />
             <span className="font-semibold">R$ {product.preco.toFixed(2)}</span>
           </div>
-          <div className="flex items-center gap-1 text-muted-foreground">
-            <Package className="h-4 w-4" />
-            <span>{product.estoque} un.</span>
+          <div className="flex flex-col items-end">
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Package className="h-4 w-4" />
+              <span>{product.estoque} un.</span>
+            </div>
+            {product.estoque_minimo !== undefined && product.estoque_minimo > 0 && (
+              <span className="text-xs text-muted-foreground">
+                Mín: {product.estoque_minimo}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
@@ -321,15 +352,6 @@ const ProductManagement = () => {
           >
             <Edit className="h-4 w-4 mr-1" />
             Editar
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => handleSale(product)}
-            disabled={product.estoque <= 0 || !product.ativo}
-            className="flex-1"
-          >
-            Vender
           </Button>
         </div>
         <div className="flex gap-2">
@@ -365,17 +387,16 @@ const ProductManagement = () => {
   }
 
   return (
-    <div className="min-h-screen bg-muted/30 py-20">
-      <div className="max-w-6xl mx-auto px-4 space-y-6">
-        <div className="flex justify-between items-center">
+    <>
+      <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Gerenciamento de Produtos</h1>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button 
-                className="btn-hero flex items-center gap-2"
+                className="btn-hero hidden md:flex items-center gap-2"
                 onClick={() => {
                   setEditingProduct(null);
-                  setFormData({ nome: "", descricao: "", preco: "", estoque: "", categoria: "", tipo_venda: "", imageUrl: "" });
+                  setFormData({ nome: "", descricao: "", preco: "", estoque: "", estoque_minimo: "", categoria: "", tipo_venda: "", imageUrl: "" });
                 }}
               >
                 <Plus className="h-4 w-4" />
@@ -447,6 +468,20 @@ const ProductManagement = () => {
                       placeholder="10"
                     />
                   </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="estoque_minimo">Estoque Mínimo</Label>
+                  <Input
+                    id="estoque_minimo"
+                    type="number"
+                    value={formData.estoque_minimo}
+                    onChange={(e) => setFormData(prev => ({ ...prev, estoque_minimo: e.target.value }))}
+                    placeholder="5"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Você será alertado quando o estoque atingir ou ficar abaixo deste valor
+                  </p>
                 </div>
                 
                  {/* Seção de Captura de Foto - Para ambos os tipos */}
@@ -581,10 +616,39 @@ const ProductManagement = () => {
         </div>
 
         <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as "comanda" | "barbearia")}>
-          <TabsList className="grid w-full max-w-md grid-cols-2">
-            <TabsTrigger value="comanda">Comanda</TabsTrigger>
-            <TabsTrigger value="barbearia">Barbearia</TabsTrigger>
-          </TabsList>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+            <TabsList className="grid w-full max-w-md grid-cols-2">
+              <TabsTrigger value="comanda">Comanda</TabsTrigger>
+              <TabsTrigger value="barbearia">Barbearia</TabsTrigger>
+            </TabsList>
+            
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Select
+                value={showLowStock ? "low-stock" : "all"}
+                onValueChange={(value) => setShowLowStock(value === "low-stock")}
+              >
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="low-stock">Apenas estoque baixo</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Button 
+                className="btn-hero flex md:hidden items-center gap-2 whitespace-nowrap"
+                onClick={() => {
+                  setEditingProduct(null);
+                  setFormData({ nome: "", descricao: "", preco: "", estoque: "", estoque_minimo: "", categoria: "", tipo_venda: "", imageUrl: "" });
+                  setIsDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Novo
+              </Button>
+            </div>
+          </div>
           
           <TabsContent value="comanda" className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -597,8 +661,12 @@ const ProductManagement = () => {
               <Card className="barbershop-card">
                 <CardContent className="text-center py-12">
                   <div className="text-muted-foreground">
-                    <div className="mb-4">Nenhum produto de comanda cadastrado ainda.</div>
-                    <p>Clique em "Novo Produto" para começar.</p>
+                    <div className="mb-4">
+                      {showLowStock 
+                        ? "Nenhum produto de comanda com estoque baixo." 
+                        : "Nenhum produto de comanda cadastrado ainda."}
+                    </div>
+                    {!showLowStock && <p>Clique em "Novo Produto" para começar.</p>}
                   </div>
                 </CardContent>
               </Card>
@@ -616,16 +684,19 @@ const ProductManagement = () => {
               <Card className="barbershop-card">
                 <CardContent className="text-center py-12">
                   <div className="text-muted-foreground">
-                    <div className="mb-4">Nenhum produto de barbearia cadastrado ainda.</div>
-                    <p>Clique em "Novo Produto" para começar.</p>
+                    <div className="mb-4">
+                      {showLowStock 
+                        ? "Nenhum produto de barbearia com estoque baixo." 
+                        : "Nenhum produto de barbearia cadastrado ainda."}
+                    </div>
+                    {!showLowStock && <p>Clique em "Novo Produto" para começar.</p>}
                   </div>
                 </CardContent>
               </Card>
             )}
           </TabsContent>
         </Tabs>
-      </div>
-    </div>
+    </>
   );
 };
 

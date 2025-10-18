@@ -572,6 +572,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   variant="outline"
                   size="lg"
                   className="w-full h-auto p-4 justify-start"
+                  onClick={() => setStep('pix-form')}
+                >
+                  <CreditCard className="h-6 w-6 mr-3" />
+                  <div className="text-left">
+                    <div className="font-medium">Cartão de Crédito</div>
+                    <div className="text-sm text-muted-foreground">
+                      Em até 12x via MercadoPago
+                    </div>
+                  </div>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full h-auto p-4 justify-start"
                   onClick={handleCashPayment}
                 >
                   <Banknote className="h-6 w-6 mr-3" />

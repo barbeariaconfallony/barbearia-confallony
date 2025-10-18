@@ -14,6 +14,24 @@ export interface CreatePixPaymentRequest {
   };
 }
 
+export interface CreateCardPaymentRequest {
+  transaction_amount: number;
+  description: string;
+  payment_method_id: string;
+  installments: number;
+  card_token: string;
+  issuer_id?: string;
+  payer: {
+    email: string;
+    first_name: string;
+    last_name: string;
+    identification: {
+      type: 'CPF';
+      number: string;
+    };
+  };
+}
+
 export interface MercadoPagoPaymentResponse {
   id: number;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';

@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { useEstoque } from '@/hooks/useEstoque';
 
 export interface Produto {
   id: string;
@@ -58,6 +59,7 @@ export const useComandas = () => {
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { darBaixaMultiplos } = useEstoque();
 
   // Carrega comandas abertas em tempo real
   useEffect(() => {
@@ -226,7 +228,7 @@ export const useComandas = () => {
     }
   };
 
-  // Finalizar comanda
+  // Finalizar comanda com baixa automática de estoque e atualização de fidelidade
   const finalizarComanda = async (comandaId: string, tipoPagamento: 'PIX' | 'Dinheiro Físico', clienteData?: { cpf: string; telefone: string }) => {
     try {
       const comanda = comandas.find(c => c.id === comandaId);
@@ -252,6 +254,29 @@ export const useComandas = () => {
       // Remove da coleção comandas
       await deleteDoc(doc(db, 'comandas', comandaId));
 
+      // Dar baixa no estoque
+      const itensEstoque = comanda.itens.map(item => ({
+        produto_id: item.produto_id,
+        quantidade: item.quantidade
+      }));
+      await darBaixaMultiplos(itensEstoque, comandaId);
+
+      // Atualizar programa de fidelidade
+      await atualizarFidelidade(comanda.cliente_id, comanda.cliente_nome, comanda.total);
+
+      // Salvar no histórico de consumo
+      await addDoc(collection(db, 'historico_consumo'), {
+        cliente_id: comanda.cliente_id,
+        cliente_nome: comanda.cliente_nome,
+        comanda_id: comandaId,
+        comanda_numero: comanda.numero,
+        itens: comanda.itens,
+        total: comanda.total,
+        tipo_pagamento: tipoPagamento,
+        data_consumo: Timestamp.now(),
+        created_at: Timestamp.now()
+      });
+
       toast({
         title: "Comanda finalizada!",
         description: `Comanda #${comanda.numero} foi finalizada com sucesso.`
@@ -263,6 +288,72 @@ export const useComandas = () => {
         description: "Não foi possível finalizar a comanda.",
         variant: "destructive"
       });
+    }
+  };
+
+  // Atualizar programa de fidelidade do cliente
+  const atualizarFidelidade = async (clienteId: string, clienteNome: string, valorGasto: number) => {
+    try {
+      const q = query(
+        collection(db, 'cliente_fidelidade'),
+        where('cliente_id', '==', clienteId)
+      );
+      const snapshot = await getDocs(q);
+
+      const pontosGanhos = Math.floor(valorGasto); // 1 ponto por real gasto
+
+      if (snapshot.empty) {
+        // Criar novo registro de fidelidade
+        await addDoc(collection(db, 'cliente_fidelidade'), {
+          cliente_id: clienteId,
+          cliente_nome: clienteNome,
+          pontos_totais: pontosGanhos,
+          pontos_disponiveis: pontosGanhos,
+          nivel: 'bronze',
+          total_gasto: valorGasto,
+          visitas_total: 1,
+          ultima_visita: Timestamp.now(),
+          created_at: Timestamp.now(),
+          updated_at: Timestamp.now()
+        });
+      } else {
+        // Atualizar registro existente
+        const fidelidadeDoc = snapshot.docs[0];
+        const fidelidadeData = fidelidadeDoc.data();
+        
+        const novoTotalGasto = fidelidadeData.total_gasto + valorGasto;
+        const novosPontosTotais = fidelidadeData.pontos_totais + pontosGanhos;
+        const novosPontosDisponiveis = fidelidadeData.pontos_disponiveis + pontosGanhos;
+        const novasVisitas = fidelidadeData.visitas_total + 1;
+
+        // Calcular nível baseado no total gasto
+        let nivel = 'bronze';
+        if (novoTotalGasto >= 5000) nivel = 'platina';
+        else if (novoTotalGasto >= 2000) nivel = 'ouro';
+        else if (novoTotalGasto >= 500) nivel = 'prata';
+
+        await updateDoc(doc(db, 'cliente_fidelidade', fidelidadeDoc.id), {
+          pontos_totais: novosPontosTotais,
+          pontos_disponiveis: novosPontosDisponiveis,
+          total_gasto: novoTotalGasto,
+          visitas_total: novasVisitas,
+          nivel: nivel,
+          ultima_visita: Timestamp.now(),
+          updated_at: Timestamp.now()
+        });
+      }
+
+      // Registrar histórico de pontos
+      await addDoc(collection(db, 'historico_pontos'), {
+        cliente_id: clienteId,
+        pontos: pontosGanhos,
+        tipo: 'ganho',
+        descricao: `Ganhou ${pontosGanhos} pontos na comanda`,
+        created_at: Timestamp.now()
+      });
+
+    } catch (error) {
+      console.error('Erro ao atualizar fidelidade:', error);
     }
   };
 

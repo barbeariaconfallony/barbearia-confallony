@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Bell, Mail, MessageSquare, Smartphone } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReminderSettings {
@@ -20,7 +21,8 @@ interface AgendamentoReminderConfigProps {
 }
 
 export const AgendamentoReminderConfig: React.FC<AgendamentoReminderConfigProps> = ({ onSave }) => {
-  const { permission, isSupported, isMobileNative, requestPermission } = useNotifications();
+  const { currentUser } = useAuth();
+  const { permission, isSupported, isMobileNative, requestPermission, fcmToken } = useNotifications(currentUser?.uid);
   const { toast } = useToast();
   
   const [settings, setSettings] = useState<ReminderSettings>({

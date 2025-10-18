@@ -333,8 +333,18 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         payment_id: paymentId,
         payer_cpf: userData.cpf.replace(/\D/g, '')
       };
-      await addDoc(collection(db, 'fila'), newAppointment);
+      const docRef = await addDoc(collection(db, 'fila'), newAppointment);
       console.log('Agendamento salvo no Firestore:', newAppointment);
+      
+      // Notificar admins sobre novo agendamento
+      const { notifyAdminsNewQueue } = await import('@/utils/notify-admins');
+      notifyAdminsNewQueue({
+        clienteNome: userName,
+        servicoNome: bookingData.service,
+        dataAgendamento: appointmentDate,
+        appointmentId: docRef.id
+      }).catch(error => console.error('Erro ao notificar admins:', error));
+      
       toast({
         title: "Agendamento confirmado!",
         description: "Seu agendamento foi salvo com sucesso na fila de atendimento."

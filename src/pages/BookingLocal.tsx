@@ -102,6 +102,7 @@ const Index = () => {
   const [pixBookingData, setPixBookingData] = useState<BookingData | null>(null);
   const [showClientModal, setShowClientModal] = useState(false);
   const [selectedClientData, setSelectedClientData] = useState<ClienteData | null>(null);
+  const [pagarApenasUmTerco, setPagarApenasUmTerco] = useState(false);
   const [configAgendamento, setConfigAgendamento] = useState<{
     dias_semana: number[];
     horarios_disponiveis: string[];
@@ -420,10 +421,10 @@ const Index = () => {
     setSelectedClientData(clienteData);
     setShowClientModal(false);
     // Salvar agendamento com os dados do cliente selecionado
-    saveAppointmentToFirestore(clienteData);
+    saveAppointmentToFirestore(clienteData, pagarApenasUmTerco);
   };
 
-  const saveAppointmentToFirestore = async (clienteData?: ClienteData) => {
+  const saveAppointmentToFirestore = async (clienteData?: ClienteData, pagarParcial?: boolean) => {
     if (!selectedService || !selectedEmployee || !selectedDate || !selectedTime) return;
 
     setIsLoading(true);
@@ -450,6 +451,9 @@ const Index = () => {
       const tempoFim = new Date(appointmentDate);
       tempoFim.setHours(hours, minutes + duracaoAtendimento, 0, 0);
 
+      const valorPago = pagarParcial ? selectedService.preco / 3 : selectedService.preco;
+      const tipoPagamento = pagarParcial ? 'parcial' : paymentMethod;
+
       const newAppointment = {
         usuario_id: usuarioId,
         usuario_nome: userName,
@@ -462,22 +466,55 @@ const Index = () => {
         funcionario_id: selectedEmployee.id,
         funcionario_nome: selectedEmployee.nome,
         preco: selectedService.preco,
+        valor_pago: valorPago,
         data: appointmentDate,
         tempo_inicio: tempoInicio,
         tempo_fim: tempoFim,
         forma_pagamento: paymentMethod,
+        tipo_pagamento: tipoPagamento,
         status: paymentMethod === 'PIX' ? 'aguardando_confirmacao' : 'confirmado',
         data_criacao: new Date(),
         duracao: duracaoAtendimento,
         presente: paymentMethod === 'PIX' ? false : true,
+        pagamento_completo: !pagarParcial,
         timestamp: new Date().getTime()
       };
 
-      await addDoc(collection(db, 'fila'), newAppointment);
+      const agendamentoRef = await addDoc(collection(db, 'fila'), newAppointment);
+
+      // Notificar admins sobre novo agendamento
+      const { notifyAdminsNewQueue } = await import('@/utils/notify-admins');
+      notifyAdminsNewQueue({
+        clienteNome: userName,
+        servicoNome: selectedService.nome,
+        dataAgendamento: appointmentDate,
+        appointmentId: agendamentoRef.id
+      }).catch(error => console.error('Erro ao notificar admins:', error));
+
+      // Se for pagamento parcial, criar registro em pagamentos_parciais
+      if (pagarParcial) {
+        await addDoc(collection(db, 'pagamentos_parciais'), {
+          agendamento_id: agendamentoRef.id,
+          usuario_id: usuarioId,
+          usuario_nome: userName,
+          usuario_email: userEmail,
+          valor_total: selectedService.preco,
+          valor_antecipado: valorPago,
+          valor_restante: selectedService.preco - valorPago,
+          forma_pagamento_antecipado: paymentMethod,
+          status_antecipado: 'pago',
+          status_restante: 'pendente',
+          data_pagamento_antecipado: new Date(),
+          servico_nome: selectedService.nome,
+          data_agendamento: appointmentDate
+        });
+      }
 
       toast({
         title: "Agendamento confirmado!",
-        description: `Agendamento salvo com sucesso para ${userName}.`
+        description: pagarParcial 
+          ? `1/3 pago (R$ ${valorPago.toFixed(2)}). Restante: R$ ${(selectedService.preco - valorPago).toFixed(2)}`
+          : `Agendamento salvo com sucesso para ${userName}.`
       });
 
       // Reset form
@@ -807,6 +844,13 @@ const Index = () => {
                           <span>PIX</span>
                         </div>
                       </Label>
+                      <Label htmlFor="cartao" className="cursor-pointer">
+                        <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
+                          <RadioGroupItem value="Cartão de Crédito" id="cartao" />
+                          <CreditCard className="h-5 w-5 text-primary" />
+                          <span>Cartão de Crédito</span>
+                        </div>
+                      </Label>
                       <Label htmlFor="dinheiro" className="cursor-pointer">
                         <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
                           <RadioGroupItem value="Dinheiro Físico" id="dinheiro" />
@@ -816,6 +860,28 @@ const Index = () => {
                       </Label>
                     </div>
                   </RadioGroup>
+                </div>
+
+                {/* Opção de pagamento parcial */}
+                <div className="p-4 border rounded-lg bg-blue-50/50 dark:bg-blue-950/20">
+                  <div className="flex items-start space-x-3">
+                    <input
+                      type="checkbox"
+                      id="pagamento-parcial"
+                      checked={pagarApenasUmTerco}
+                      onChange={(e) => setPagarApenasUmTerco(e.target.checked)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="pagamento-parcial" className="font-medium cursor-pointer block">
+                        Pagar apenas 1/3 agora (restante após o serviço)
+                      </label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Pague R$ {(selectedService.preco / 3).toFixed(2)} agora e 
+                        R$ {(selectedService.preco * 2 / 3).toFixed(2)} após o atendimento
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-4">

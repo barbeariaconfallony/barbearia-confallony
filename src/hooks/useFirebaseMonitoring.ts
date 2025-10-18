@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, doc, getDoc, onSnapshot, query, limit, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, onSnapshot, query, limit, orderBy, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { startOfDay, endOfDay } from 'date-fns';
 
 export interface CollectionInfo {
   name: string;
@@ -51,7 +52,7 @@ const FIRESTORE_LIMITS = {
   STORAGE_COST: 0.18 / 1024 / 1024 / 1024, // $0.18 per GB per month
 };
 
-export const useFirebaseMonitoring = () => {
+export const useFirebaseMonitoring = (filterStartDate?: Date, filterEndDate?: Date) => {
   const [databaseUsage, setDatabaseUsage] = useState<DatabaseUsage | null>(null);
   const [alerts, setAlerts] = useState<DatabaseAlert[]>([]);
   const [loading, setLoading] = useState(false);
@@ -162,11 +163,43 @@ export const useFirebaseMonitoring = () => {
       const totalSizeBytes = collectionsInfo.reduce((sum, col) => sum + col.estimatedSizeBytes, 0);
       const totalSizeMB = totalSizeBytes / (1024 * 1024);
 
-      // Simular operações diárias baseado no número de documentos
-      // Em um ambiente real, você precisaria implementar um sistema de logging
-      const dailyReads = Math.floor(totalDocuments * 10 + Math.random() * 1000);
-      const dailyWrites = Math.floor(totalDocuments * 2 + Math.random() * 100);
-      const dailyDeletes = Math.floor(totalDocuments * 0.1 + Math.random() * 10);
+      // Buscar dados REAIS de operações baseado no período de filtro
+      let dailyReads = 0;
+      let dailyWrites = 0;
+      let dailyDeletes = 0;
+
+      try {
+        // Usar datas customizadas se fornecidas, senão usar hoje
+        const startDate = filterStartDate ? startOfDay(filterStartDate) : startOfDay(new Date());
+        const endDate = filterEndDate ? endOfDay(filterEndDate) : endOfDay(new Date());
+        
+        console.log('📅 Filtrando operações entre:', startDate, 'e', endDate);
+        
+        // Buscar logs diretos no período filtrado
+        const logsQuery = query(
+          collection(db, 'operation_logs'),
+          where('timestamp', '>=', Timestamp.fromDate(startDate)),
+          where('timestamp', '<=', Timestamp.fromDate(endDate))
+        );
+        
+        const logsSnapshot = await getDocs(logsQuery);
+        
+        logsSnapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.type === 'read') dailyReads++;
+          else if (data.type === 'write') dailyWrites++;
+          else if (data.type === 'delete') dailyDeletes++;
+        });
+        
+        console.log('✅ Operações no período:', { dailyReads, dailyWrites, dailyDeletes, totalLogs: logsSnapshot.size });
+      } catch (logError) {
+        console.error('Erro ao buscar logs de operações:', logError);
+        // Fallback para estimativas se o sistema de logs não estiver configurado
+        dailyReads = Math.floor(totalDocuments * 10 + Math.random() * 1000);
+        dailyWrites = Math.floor(totalDocuments * 2 + Math.random() * 100);
+        dailyDeletes = Math.floor(totalDocuments * 0.1 + Math.random() * 10);
+        console.log('⚠️ Usando estimativas (sistema de logs não configurado)');
+      }
 
       // Calcular custos estimados
       const dailyCost = 
@@ -273,7 +306,7 @@ export const useFirebaseMonitoring = () => {
     setAlerts(newAlerts);
   };
 
-  // Carregar dados iniciais
+  // Carregar dados iniciais e recarregar quando as datas mudarem
   useEffect(() => {
     loadDatabaseUsage();
     
@@ -281,7 +314,7 @@ export const useFirebaseMonitoring = () => {
     const interval = setInterval(loadDatabaseUsage, 5 * 60 * 1000);
     
     return () => clearInterval(interval);
-  }, [loadDatabaseUsage]);
+  }, [loadDatabaseUsage, filterStartDate, filterEndDate]);
 
   return {
     databaseUsage,

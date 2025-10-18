@@ -54,6 +54,7 @@ interface Comanda {
 interface UserStats {
   agendamentosPendentes: Appointment[];
   agendamentosConcluidos: Appointment[];
+  agendamentosCancelados: Appointment[];
   comandasFinalizadas: Comanda[];
   totalServicos: number;
   totalValueServicos: number;
@@ -310,6 +311,19 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
           data: doc.data().data_conclusao?.toDate() || new Date()
         })) as Appointment[];
 
+        // Buscar agendamentos cancelados
+        const canceladosQuery = query(
+          collection(db, 'fila'),
+          where('cliente_email', '==', user.email),
+          where('status', '==', 'cancelado')
+        );
+        const canceladosSnapshot = await getDocs(canceladosQuery);
+        const agendamentosCancelados = canceladosSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          data: doc.data().data?.toDate() || new Date()
+        })) as Appointment[];
+
         // Buscar comandas finalizadas
         const comandasQuery = query(
           collection(db, 'comandas_finalizadas'),
@@ -333,6 +347,7 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
         setUserStats({
           agendamentosPendentes,
           agendamentosConcluidos,
+          agendamentosCancelados,
           comandasFinalizadas,
           totalServicos,
           totalValueServicos,
@@ -395,14 +410,12 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
         </DialogHeader>
 
         <Tabs defaultValue="details" className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="details">Informações</TabsTrigger>
-            <TabsTrigger value="analytics">Análise</TabsTrigger>
-            <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
-            <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
-            <TabsTrigger value="concluidos">Concluídos</TabsTrigger>
-            <TabsTrigger value="comandas">Comandas</TabsTrigger>
-            <TabsTrigger value="stats">Resumo</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="details">Perfil</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="historico">Histórico</TabsTrigger>
+            <TabsTrigger value="agendamentos">Agendamentos</TabsTrigger>
+            <TabsTrigger value="insights">Insights</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="space-y-4">
@@ -482,89 +495,89 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Informações básicas */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Informações Pessoais</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">Nome Completo</Label>
+                        <p className="mt-1 font-medium">{user.nome}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">E-mail</Label>
+                        <p className="mt-1 font-medium">{user.email}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">Telefone</Label>
+                        <p className="mt-1 font-medium">{user.telefone || "Não informado"}</p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">Membro desde</Label>
+                        <p className="mt-1 font-medium">
+                          {format(user.createdAt, "dd/MM/yyyy", { locale: ptBR })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <Badge variant={user.isBlocked ? "destructive" : "default"}>
+                        {user.isBlocked ? "Bloqueado" : "Ativo"}
+                      </Badge>
+                      {user.isAdmin && <Badge variant="outline">Administrador</Badge>}
+                      {(userStats?.fidelidadeScore || 0) > 70 && <Badge>Cliente VIP</Badge>}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Métricas principais */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <Card>
                     <CardContent className="pt-6">
-                      <div className="flex items-center gap-2">
-                        <Star className="h-5 w-5 text-primary" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Pontos</p>
-                          <p className="text-2xl font-bold">{user.pontos_fidelidade || 0}</p>
-                        </div>
+                      <div className="text-center">
+                        <Star className="h-6 w-6 text-primary mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Pontos</p>
+                        <p className="text-2xl font-bold">{user.pontos_fidelidade || 0}</p>
                       </div>
                     </CardContent>
                   </Card>
 
                   <Card>
                     <CardContent className="pt-6">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="h-5 w-5 text-green-500" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Saldo</p>
-                          <p className="text-2xl font-bold">R$ {(user.saldo || 0).toFixed(2)}</p>
-                        </div>
+                      <div className="text-center">
+                        <DollarSign className="h-6 w-6 text-green-500 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Saldo</p>
+                        <p className="text-2xl font-bold">R$ {(user.saldo || 0).toFixed(2)}</p>
                       </div>
                     </CardContent>
                   </Card>
 
                   <Card>
                     <CardContent className="pt-6">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-5 w-5 text-blue-500" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Membro desde</p>
-                          <p className="text-lg font-bold">
-                            {format(user.createdAt, "MMM yyyy", { locale: ptBR })}
-                          </p>
-                        </div>
+                      <div className="text-center">
+                        <Award className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Score</p>
+                        <p className="text-2xl font-bold">{Math.round(userStats?.fidelidadeScore || 0)}</p>
                       </div>
                     </CardContent>
                   </Card>
 
                   <Card>
                     <CardContent className="pt-6">
-                      <div className="flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5 text-orange-500" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Total Gasto</p>
-                          <p className="text-lg font-bold">
-                            R$ {((userStats?.totalValueServicos || 0) + (userStats?.totalValueComandas || 0)).toFixed(2)}
-                          </p>
-                        </div>
+                      <div className="text-center">
+                        <TrendingUp className="h-6 w-6 text-orange-500 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Total Gasto</p>
+                        <p className="text-xl font-bold">
+                          R$ {((userStats?.totalValueServicos || 0) + (userStats?.totalValueComandas || 0)).toFixed(2)}
+                        </p>
                       </div>
                     </CardContent>
                   </Card>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Nome Completo</Label>
-                      <p className="mt-1">{user.nome}</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">E-mail</Label>
-                      <p className="mt-1">{user.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium">Telefone</Label>
-                      <p className="mt-1">{user.telefone || "Não informado"}</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">Status</Label>
-                      <div className="mt-1 flex gap-2">
-                        <Badge variant={user.isBlocked ? "destructive" : "default"}>
-                          {user.isBlocked ? "Bloqueado" : "Ativo"}
-                        </Badge>
-                        {user.isAdmin && (
-                          <Badge variant="outline">Administrador</Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 <Button onClick={() => setIsEditing(true)} className="w-full">
@@ -808,169 +821,163 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
             )}
           </TabsContent>
 
-          <TabsContent value="relatorios" className="space-y-4">
+          <TabsContent value="historico" className="space-y-4">
             {statsLoading ? (
-              <p className="text-center py-8">Carregando relatórios...</p>
+              <p className="text-center py-8">Carregando histórico...</p>
             ) : (
-              <div className="space-y-6">
-                {/* Relatório de performance */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5" />
-                      Relatório de Performance do Cliente
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-sm">Métricas de Fidelidade</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Total de visitas</span>
-                            <span className="font-medium">{userStats?.totalServicos || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Dias de fidelidade</span>
-                            <span className="font-medium">{differenceInDays(new Date(), user.createdAt)} dias</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Score de fidelidade</span>
-                            <Badge variant="outline">{Math.round(userStats?.fidelidadeScore || 0)}/100</Badge>
-                          </div>
-                        </div>
-                      </div>
+              <div className="space-y-4">
+                {/* Resumo rápido */}
+                <div className="grid grid-cols-3 gap-4">
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <Clock className="h-5 w-5 text-orange-500 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Pendentes</p>
+                      <p className="text-2xl font-bold">{userStats?.agendamentosPendentes.length || 0}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <CheckCircle className="h-5 w-5 text-green-500 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Concluídos</p>
+                      <p className="text-2xl font-bold">{userStats?.agendamentosConcluidos.length || 0}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <Receipt className="h-5 w-5 text-blue-500 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Comandas</p>
+                      <p className="text-2xl font-bold">{userStats?.comandasFinalizadas.length || 0}</p>
+                    </CardContent>
+                  </Card>
+                </div>
 
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-sm">Análise Financeira</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Gasto total</span>
-                            <span className="font-medium">
-                              R$ {((userStats?.totalValueServicos || 0) + (userStats?.totalValueComandas || 0)).toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Média por visita</span>
-                            <span className="font-medium">R$ {(userStats?.mediaGastoPorVisita || 0).toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Crescimento anual</span>
-                            <Badge variant={userStats?.crescimentoAnual && userStats.crescimentoAnual > 0 ? "default" : "secondary"}>
-                              {userStats?.crescimentoAnual ? `${userStats.crescimentoAnual.toFixed(1)}%` : "0%"}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-sm">Comportamento</h4>
-                        <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Satisfação estimada</span>
-                            <Badge variant="outline">{Math.round(userStats?.satisfacaoScore || 0)}%</Badge>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Ranking</span>
-                            <span className="font-medium">#{userStats?.rankingCliente || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-sm text-muted-foreground">Status</span>
-                            <Badge variant={
-                              (userStats?.fidelidadeScore || 0) > 70 ? "default" :
-                              (userStats?.fidelidadeScore || 0) > 40 ? "secondary" : "outline"
-                            }>
-                              {(userStats?.fidelidadeScore || 0) > 70 ? "VIP" :
-                               (userStats?.fidelidadeScore || 0) > 40 ? "Regular" : "Novo"}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Produtos favoritos */}
-                {userStats?.produtosFavoritos && userStats.produtosFavoritos.length > 0 && (
+                {/* Agendamentos Pendentes */}
+                {(userStats?.agendamentosPendentes.length || 0) > 0 && (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <Receipt className="h-5 w-5" />
-                        Top 5 Produtos Favoritos
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Agendamentos Pendentes
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {userStats.produtosFavoritos.map((produto, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <Badge variant="outline">{index + 1}º</Badge>
-                              <div>
-                                <p className="font-medium">{produto.name}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {produto.quantidade} unidades compradas
-                                </p>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Serviço</TableHead>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Valor</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {userStats?.agendamentosPendentes.map((appointment) => (
+                            <TableRow key={appointment.id}>
+                              <TableCell className="font-medium">{appointment.servico_nome}</TableCell>
+                              <TableCell>{format(appointment.data, "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{appointment.status}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right">R$ {appointment.preco.toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Últimos Agendamentos Concluídos */}
+                {(userStats?.agendamentosConcluidos.length || 0) > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4" />
+                        Últimos Agendamentos Concluídos
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Serviço</TableHead>
+                            <TableHead>Funcionário</TableHead>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Pagamento</TableHead>
+                            <TableHead className="text-right">Valor</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {userStats?.agendamentosConcluidos.slice(0, 10).map((appointment) => (
+                            <TableRow key={appointment.id}>
+                              <TableCell className="font-medium">{appointment.servico_nome}</TableCell>
+                              <TableCell>{appointment.funcionario_nome || "N/A"}</TableCell>
+                              <TableCell>{format(appointment.data, "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary">{appointment.forma_pagamento}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right">R$ {appointment.preco.toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Últimas Comandas */}
+                {(userStats?.comandasFinalizadas.length || 0) > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Receipt className="h-4 w-4" />
+                        Últimas Comandas Finalizadas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {userStats?.comandasFinalizadas.slice(0, 5).map((comanda) => (
+                          <Card key={comanda.id} className="border">
+                            <CardHeader className="pb-3">
+                              <div className="flex justify-between items-center">
+                                <h4 className="font-medium">Comanda #{comanda.numero}</h4>
+                                <div className="text-right">
+                                  <p className="text-sm text-muted-foreground">
+                                    {format(comanda.data_finalizacao, "dd/MM/yyyy", { locale: ptBR })}
+                                  </p>
+                                  <p className="font-bold">R$ {comanda.total.toFixed(2)}</p>
+                                </div>
                               </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-bold">R$ {produto.valor.toFixed(2)}</p>
-                              <p className="text-sm text-muted-foreground">Total gasto</p>
-                            </div>
-                          </div>
+                            </CardHeader>
+                            <CardContent className="pt-0">
+                              <div className="space-y-1">
+                                {comanda.itens.map((item, index) => (
+                                  <div key={index} className="flex justify-between text-sm">
+                                    <span>{item.quantidade}x {item.produto_nome}</span>
+                                    <span className="font-medium">R$ {item.total.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </CardContent>
+                          </Card>
                         ))}
                       </div>
                     </CardContent>
                   </Card>
                 )}
 
-                {/* Recomendações para o Admin */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Zap className="h-5 w-5" />
-                      Recomendações para Atendimento
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {(userStats?.fidelidadeScore || 0) > 80 && (
-                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                          <Award className="h-4 w-4 text-green-600" />
-                          <span className="text-sm">Cliente VIP - Oferecer atendimento premium e promoções exclusivas</span>
-                        </div>
-                      )}
-                      
-                      {(userStats?.frequenciaMedia || 0) > 60 && (
-                        <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <Clock className="h-4 w-4 text-yellow-600" />
-                          <span className="text-sm">Cliente em risco - Faz muito tempo desde a última visita, considere uma campanha de reativação</span>
-                        </div>
-                      )}
-
-                      {(userStats?.mediaGastoPorVisita || 0) > 100 && (
-                        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                          <DollarSign className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm">Alto valor por visita - Cliente com potencial para serviços premium</span>
-                        </div>
-                      )}
-
-                      {userStats?.proximaVisitaEstimada && (
-                        <div className="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                          <Calendar className="h-4 w-4 text-purple-600" />
-                          <span className="text-sm">
-                            Próxima visita estimada: {format(userStats.proximaVisitaEstimada, "dd/MM/yyyy", { locale: ptBR })} - 
-                            Considere enviar lembrete proativo
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                {/* Mensagem quando não há dados */}
+                {!userStats?.agendamentosPendentes.length && 
+                 !userStats?.agendamentosConcluidos.length && 
+                 !userStats?.comandasFinalizadas.length && (
+                  <p className="text-center text-muted-foreground py-12">Nenhum histórico disponível</p>
+                )}
               </div>
             )}
           </TabsContent>
 
-          <TabsContent value="pendentes" className="space-y-4">
+          <TabsContent value="agendamentos" className="space-y-4">
+            {/* Agendamentos Pendentes */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -1009,9 +1016,8 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
 
-          <TabsContent value="concluidos" className="space-y-4">
+            {/* Agendamentos Concluídos */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -1029,22 +1035,60 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
                     <TableHeader>
                       <TableRow>
                         <TableHead>Serviço</TableHead>
-                        <TableHead>Funcionário</TableHead>
                         <TableHead>Data</TableHead>
-                        <TableHead>Pagamento</TableHead>
+                        <TableHead>Status</TableHead>
                         <TableHead>Valor</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {userStats?.agendamentosConcluidos.map((appointment) => (
+                      {userStats?.agendamentosConcluidos.slice(0, 10).map((appointment) => (
                         <TableRow key={appointment.id}>
                           <TableCell>{appointment.servico_nome}</TableCell>
-                          <TableCell>{appointment.funcionario_nome || "N/A"}</TableCell>
-                          <TableCell>{format(appointment.data, "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                          <TableCell>{format(appointment.data, "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
                           <TableCell>
-                            <Badge variant="secondary">{appointment.forma_pagamento}</Badge>
+                            <Badge variant="default">Concluído</Badge>
                           </TableCell>
-                          <TableCell>R$ {appointment.preco.toFixed(2)}</TableCell>
+                          <TableCell>R$ {appointment.preco?.toFixed(2) || '0.00'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Agendamentos Cancelados */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <XCircle className="h-5 w-5" />
+                  Agendamentos Cancelados
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <p>Carregando...</p>
+                ) : (!userStats?.agendamentosCancelados || userStats.agendamentosCancelados.length === 0) ? (
+                  <p className="text-muted-foreground text-center py-8">Nenhum agendamento cancelado</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Serviço</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Valor</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {userStats.agendamentosCancelados.slice(0, 10).map((appointment) => (
+                        <TableRow key={appointment.id}>
+                          <TableCell>{appointment.servico_nome}</TableCell>
+                          <TableCell>{format(appointment.data, "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
+                          <TableCell>
+                            <Badge variant="destructive">Cancelado</Badge>
+                          </TableCell>
+                          <TableCell>R$ {appointment.preco?.toFixed(2) || '0.00'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1054,107 +1098,200 @@ export const UserDetailsModal = ({ user, onUpdate, open, onOpenChange }: UserDet
             </Card>
           </TabsContent>
 
-          <TabsContent value="comandas" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Receipt className="h-5 w-5" />
-                  Comandas Finalizadas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsLoading ? (
-                  <p>Carregando...</p>
-                ) : userStats?.comandasFinalizadas.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">Nenhuma comanda finalizada</p>
-                ) : (
-                  <div className="space-y-4">
-                    {userStats?.comandasFinalizadas.map((comanda) => (
-                      <Card key={comanda.id} className="border">
-                        <CardHeader className="pb-3">
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                            <h4 className="font-medium">Comanda #{comanda.numero}</h4>
-                            <div className="text-right">
-                              <p className="text-sm text-muted-foreground">
-                                {format(comanda.data_finalizacao, "dd/MM/yyyy", { locale: ptBR })}
-                              </p>
-                              <p className="font-bold">R$ {comanda.total.toFixed(2)}</p>
-                            </div>
+          <TabsContent value="insights" className="space-y-4">
+            {statsLoading ? (
+              <p className="text-center py-8">Carregando insights...</p>
+            ) : (
+              <div className="space-y-4">
+                {/* Métricas de fidelidade */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      Análise de Fidelidade
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-3">
+                        <h4 className="font-semibold text-sm text-muted-foreground">Engajamento</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">Total de visitas</span>
+                            <span className="font-medium">{userStats?.totalServicos || 0}</span>
                           </div>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="space-y-2">
-                            {comanda.itens.map((item, index) => (
-                              <div key={index} className="flex justify-between text-sm">
-                                <span>{item.quantidade}x {item.produto_nome}</span>
-                                <span>R$ {item.total.toFixed(2)}</span>
-                              </div>
-                            ))}
+                          <div className="flex justify-between">
+                            <span className="text-sm">Dias como cliente</span>
+                            <span className="font-medium">{differenceInDays(new Date(), user.createdAt)} dias</span>
                           </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Score de fidelidade</span>
+                            <Badge variant="outline">{Math.round(userStats?.fidelidadeScore || 0)}/100</Badge>
+                          </div>
+                        </div>
+                      </div>
 
-          <TabsContent value="stats" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Resumo de Serviços
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span>Total de Serviços:</span>
-                      <span className="font-bold">{userStats?.totalServicos || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Valor Total em Serviços:</span>
-                      <span className="font-bold">R$ {(userStats?.totalValueServicos || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Agendamentos Pendentes:</span>
-                      <span className="font-bold">{userStats?.agendamentosPendentes.length || 0}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                      <div className="space-y-3">
+                        <h4 className="font-semibold text-sm text-muted-foreground">Performance Financeira</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">Gasto total</span>
+                            <span className="font-medium">
+                              R$ {((userStats?.totalValueServicos || 0) + (userStats?.totalValueComandas || 0)).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Média por visita</span>
+                            <span className="font-medium">R$ {(userStats?.mediaGastoPorVisita || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Crescimento</span>
+                            <Badge variant={userStats?.crescimentoAnual && userStats.crescimentoAnual > 0 ? "default" : "secondary"}>
+                              {userStats?.crescimentoAnual ? `${userStats.crescimentoAnual.toFixed(1)}%` : "0%"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Receipt className="h-5 w-5" />
-                    Resumo de Comandas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span>Total de Comandas:</span>
-                      <span className="font-bold">{userStats?.comandasFinalizadas.length || 0}</span>
+                      <div className="space-y-3">
+                        <h4 className="font-semibold text-sm text-muted-foreground">Comportamento</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">Satisfação</span>
+                            <Badge variant="outline">{Math.round(userStats?.satisfacaoScore || 0)}%</Badge>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Ranking</span>
+                            <span className="font-medium">#{userStats?.rankingCliente || 0}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Classificação</span>
+                            <Badge variant={
+                              (userStats?.fidelidadeScore || 0) > 70 ? "default" :
+                              (userStats?.fidelidadeScore || 0) > 40 ? "secondary" : "outline"
+                            }>
+                              {(userStats?.fidelidadeScore || 0) > 70 ? "VIP" :
+                               (userStats?.fidelidadeScore || 0) > 40 ? "Regular" : "Novo"}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Valor Total em Comandas:</span>
-                      <span className="font-bold">R$ {(userStats?.totalValueComandas || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between border-t pt-4">
-                      <span className="font-medium">Valor Total Geral:</span>
-                      <span className="font-bold text-primary">
-                        R$ {((userStats?.totalValueServicos || 0) + (userStats?.totalValueComandas || 0)).toFixed(2)}
+                  </CardContent>
+                </Card>
+
+                {/* Previsões */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Previsões e Comportamento
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between items-center p-3 border rounded-lg">
+                      <span className="text-sm font-medium">Última visita</span>
+                      <span className="font-medium">
+                        {userStats?.ultimaVisita 
+                          ? format(userStats.ultimaVisita, "dd/MM/yyyy", { locale: ptBR })
+                          : "N/A"
+                        }
                       </span>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                    <div className="flex justify-between items-center p-3 border rounded-lg">
+                      <span className="text-sm font-medium">Próxima visita estimada</span>
+                      <span className="font-medium">
+                        {userStats?.proximaVisitaEstimada 
+                          ? format(userStats.proximaVisitaEstimada, "dd/MM/yyyy", { locale: ptBR })
+                          : "N/A"
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 border rounded-lg">
+                      <span className="text-sm font-medium">Frequência média entre visitas</span>
+                      <Badge variant="outline">{Math.round(userStats?.frequenciaMedia || 0)} dias</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Recomendações inteligentes */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Recomendações Estratégicas
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {(userStats?.fidelidadeScore || 0) > 80 && (
+                        <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+                          <Award className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-sm">Cliente VIP Identificado</p>
+                            <p className="text-sm text-muted-foreground">
+                              Oferecer atendimento premium, promoções exclusivas e programa de fidelidade personalizado
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {(userStats?.frequenciaMedia || 0) > 60 && (
+                        <div className="flex items-start gap-3 p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                          <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-sm">Risco de Inatividade</p>
+                            <p className="text-sm text-muted-foreground">
+                              Cliente está demorando mais que o habitual. Considere campanha de reativação com desconto especial
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {(userStats?.mediaGastoPorVisita || 0) > 100 && (
+                        <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-sm">Alto Valor por Visita</p>
+                            <p className="text-sm text-muted-foreground">
+                              Cliente com potencial premium. Apresentar serviços e produtos de maior valor agregado
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {userStats?.proximaVisitaEstimada && (
+                        <div className="flex items-start gap-3 p-3 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg">
+                          <Calendar className="h-5 w-5 text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-sm">Oportunidade de Agendamento Proativo</p>
+                            <p className="text-sm text-muted-foreground">
+                              Próxima visita estimada: {format(userStats.proximaVisitaEstimada, "dd/MM/yyyy", { locale: ptBR })}. 
+                              Enviar lembrete ou oferta personalizada
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {(userStats?.fidelidadeScore || 0) < 30 && (userStats?.totalServicos || 0) > 0 && (
+                        <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+                          <XCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium text-sm">Baixo Engajamento</p>
+                            <p className="text-sm text-muted-foreground">
+                              Cliente com poucas interações. Implementar estratégia de fidelização com benefícios iniciais
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </TabsContent>
+
+
         </Tabs>
       </DialogContent>
     </Dialog>

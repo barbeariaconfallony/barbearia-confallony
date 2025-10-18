@@ -3,6 +3,8 @@ import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { doc, setDoc, collection } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface NotificationOptions {
   title: string;
@@ -12,10 +14,29 @@ interface NotificationOptions {
   requireInteraction?: boolean;
 }
 
-export const useNotifications = () => {
+export const useNotifications = (userId?: string) => {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isSupported, setIsSupported] = useState(false);
   const [isMobileNative, setIsMobileNative] = useState(false);
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
+
+  // Função para salvar token FCM no Firestore
+  const saveFCMToken = async (token: string, userId: string) => {
+    try {
+      const tokenRef = doc(collection(db, 'device_tokens'), `${userId}_${token.substring(0, 10)}`);
+      await setDoc(tokenRef, {
+        userId,
+        token,
+        platform: Capacitor.getPlatform(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }, { merge: true });
+      
+      console.log('Token FCM salvo com sucesso:', token);
+    } catch (error) {
+      console.error('Erro ao salvar token FCM:', error);
+    }
+  };
 
   useEffect(() => {
     // Detectar se está rodando em ambiente nativo (iOS ou Android)
@@ -36,6 +57,32 @@ export const useNotifications = () => {
           setPermission('default');
         }
       });
+
+      // Configurar listeners para notificações push
+      PushNotifications.addListener('registration', (token) => {
+        console.log('Token de push recebido:', token.value);
+        setFcmToken(token.value);
+        
+        // Salvar token no Firestore se tivermos o userId
+        if (userId) {
+          saveFCMToken(token.value, userId);
+        }
+      });
+
+      PushNotifications.addListener('registrationError', (error) => {
+        console.error('Erro ao registrar para push:', error);
+      });
+
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('Notificação recebida:', notification);
+        toast(notification.title || 'Nova notificação', {
+          description: notification.body,
+        });
+      });
+
+      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+        console.log('Notificação clicada:', notification);
+      });
     } else {
       // Para web, verificar API de notificações do navegador
       setIsSupported('Notification' in window);
@@ -44,7 +91,14 @@ export const useNotifications = () => {
         setPermission(Notification.permission);
       }
     }
-  }, []);
+
+    // Cleanup listeners
+    return () => {
+      if (isNative) {
+        PushNotifications.removeAllListeners();
+      }
+    };
+  }, [userId]);
 
   const requestPermission = async (): Promise<NotificationPermission> => {
     if (!isSupported) {
@@ -194,11 +248,13 @@ export const useNotifications = () => {
     permission,
     isSupported,
     isMobileNative,
+    fcmToken,
     requestPermission,
     showNotification,
     showSuccess,
     showError,
     showWarning,
     showInfo,
+    saveFCMToken,
   };
 };

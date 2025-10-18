@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CheckCircle, CreditCard, Banknote, Calendar, User, Clock, Receipt, Ruler } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CheckCircle, CreditCard, Banknote, Calendar, User, Clock, Receipt, Ruler, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
@@ -47,6 +48,7 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
   const [selectedAgendamento, setSelectedAgendamento] = useState<AgendamentoDetalhado | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [filtroServico, setFiltroServico] = useState<string>("todos");
 
   const loadAgendamentoDetails = async (agendamento: Appointment) => {
     setLoadingDetails(true);
@@ -172,6 +174,20 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
     return <CreditCard className="h-4 w-4 text-gray-600" />;
   };
 
+  // Obter lista de serviços únicos
+  const servicosUnicos = useMemo(() => {
+    const servicos = agendamentos.map(a => a.servico_nome);
+    return Array.from(new Set(servicos)).sort();
+  }, [agendamentos]);
+
+  // Filtrar agendamentos
+  const agendamentosFiltrados = useMemo(() => {
+    if (filtroServico === "todos") {
+      return agendamentos;
+    }
+    return agendamentos.filter(a => a.servico_nome === filtroServico);
+  }, [agendamentos, filtroServico]);
+
   if (compact) {
     return (
       <>
@@ -180,17 +196,36 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
             <CheckCircle className="h-4 w-4 text-green-600" />
             Últimos Agendamentos
           </h4>
+          
+          {/* Filtro de Serviço */}
+          {servicosUnicos.length > 0 && (
+            <Select value={filtroServico} onValueChange={setFiltroServico}>
+              <SelectTrigger className="w-full h-8 text-xs">
+                <Filter className="h-3 w-3 mr-1" />
+                <SelectValue placeholder="Filtrar por serviço" />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                <SelectItem value="todos" className="text-xs">Todos os serviços</SelectItem>
+                {servicosUnicos.map((servico) => (
+                  <SelectItem key={servico} value={servico} className="text-xs">
+                    {servico}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
           <div className="space-y-1">
             {loading ? (
               <div className="flex items-center justify-center p-4 bg-muted/20 rounded text-xs text-muted-foreground">
                 <span>Carregando...</span>
               </div>
-            ) : agendamentos.length === 0 ? (
+            ) : agendamentosFiltrados.length === 0 ? (
               <div className="flex items-center justify-center p-4 bg-muted/20 rounded text-xs text-muted-foreground">
-                <span>Nenhum agendamento anterior encontrado</span>
+                <span>Nenhum agendamento encontrado</span>
               </div>
             ) : (
-              agendamentos.map((agendamento, index) => (
+              agendamentosFiltrados.map((agendamento, index) => (
                 <div 
                   key={index} 
                   className="p-2 bg-muted/20 rounded text-xs space-y-1 cursor-pointer hover:bg-muted/30 transition-colors"
@@ -213,161 +248,221 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
 
         {/* Modal de Detalhes do Agendamento */}
         <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader className="border-b pb-4">
-              <DialogTitle className="flex items-center gap-3 text-xl">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Receipt className="h-5 w-5 text-primary" />
+          <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto bg-gradient-to-br from-background via-background to-primary/5">
+            <DialogHeader className="border-b pb-4 relative">
+              <div className="absolute -top-2 -right-2 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
+              <DialogTitle className="flex items-center justify-between text-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30">
+                    <Receipt className="h-6 w-6 text-primary" />
+                  </div>
+                  <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                    Detalhes do Serviço
+                  </span>
                 </div>
-                Detalhes do Agendamento
+                <Badge className="bg-green-500/10 text-green-600 border-green-500/30 hover:bg-green-500/20">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Concluído
+                </Badge>
               </DialogTitle>
             </DialogHeader>
             
             {loadingDetails ? (
-              <div className="flex items-center justify-center p-12">
-                <div className="text-center space-y-2">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <span className="text-sm text-muted-foreground">Carregando detalhes...</span>
+              <div className="flex items-center justify-center p-16">
+                <div className="text-center space-y-3">
+                  <div className="relative">
+                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/20 border-t-primary mx-auto"></div>
+                    <div className="absolute inset-0 rounded-full bg-primary/5 animate-pulse"></div>
+                  </div>
+                  <span className="text-sm text-muted-foreground font-medium">Carregando detalhes...</span>
                 </div>
               </div>
             ) : selectedAgendamento && (
-              <div className="space-y-6 pt-2">
-                {/* Informações do Serviço */}
-                <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl p-4 border border-primary/20">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-background/80">
-                      <Calendar className="h-5 w-5 text-primary" />
+              <div className="space-y-5 pt-3">
+                {/* Hero Card - Informações Principais */}
+                <div className="relative overflow-hidden bg-gradient-to-br from-primary via-primary/95 to-primary/80 rounded-2xl p-6 text-white shadow-xl border border-primary/30">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+                  <div className="relative space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Calendar className="h-5 w-5 text-white/90" />
+                          <span className="text-xs uppercase tracking-wider text-white/80 font-semibold">Serviço Realizado</span>
+                        </div>
+                        <h3 className="font-bold text-2xl mb-2">{selectedAgendamento.servico_nome}</h3>
+                        <p className="text-sm text-white/90 capitalize">
+                          {format(selectedAgendamento.data_conclusao || new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                        </p>
+                        <p className="text-sm text-white/80">
+                          {format(selectedAgendamento.data_conclusao || new Date(), "'às' HH:mm", { locale: ptBR })}
+                        </p>
+                      </div>
+                      <div className="text-right bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                        <p className="text-xs text-white/80 uppercase tracking-wider font-medium mb-1">Valor Total</p>
+                        <p className="font-bold text-3xl">R$ {selectedAgendamento.preco.toFixed(2)}</p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg mb-1">{selectedAgendamento.servico_nome}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {format(selectedAgendamento.data_conclusao || new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {format(selectedAgendamento.data_conclusao || new Date(), "'às' HH:mm", { locale: ptBR })}
-                      </p>
-                    </div>
+
+                    {/* Tempo de Duração destacado */}
+                    {selectedAgendamento.tempo_inicio && selectedAgendamento.tempo_fim && (() => {
+                      const duracao = Math.round((selectedAgendamento.tempo_fim.getTime() - selectedAgendamento.tempo_inicio.getTime()) / 60000);
+                      return (
+                        <div className="flex items-center gap-4 pt-3 border-t border-white/20">
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-white/80" />
+                            <span className="text-sm text-white/90">
+                              {format(selectedAgendamento.tempo_inicio, "HH:mm")} - {format(selectedAgendamento.tempo_fim, "HH:mm")}
+                            </span>
+                          </div>
+                          <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/25">
+                            {duracao} minutos de atendimento
+                          </Badge>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
-                <div className="grid gap-4">
-                  {/* Funcionário */}
+                {/* Grid de Informações Importantes */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Profissional */}
                   {selectedAgendamento.funcionario_nome && (
-                    <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                      <div className="p-2 rounded-lg bg-background">
-                        <User className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Profissional</p>
-                        <p className="font-semibold">{selectedAgendamento.funcionario_nome}</p>
+                    <div className="group relative overflow-hidden bg-gradient-to-br from-muted/50 to-muted/30 rounded-xl p-5 border border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg">
+                      <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
+                      <div className="relative flex items-center gap-4">
+                        <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 group-hover:scale-110 transition-transform">
+                          <User className="h-6 w-6 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Atendido por</p>
+                          <p className="font-bold text-lg text-foreground">{selectedAgendamento.funcionario_nome}</p>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Tempo de Atendimento */}
-                  {selectedAgendamento.tempo_inicio && selectedAgendamento.tempo_fim && (
-                    <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                      <div className="p-2 rounded-lg bg-background">
-                        <Clock className="h-5 w-5 text-primary" />
+                  {/* Forma de Pagamento */}
+                  <div className="group relative overflow-hidden bg-gradient-to-br from-muted/50 to-muted/30 rounded-xl p-5 border border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
+                    <div className="relative flex items-center gap-4">
+                      <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/20 group-hover:scale-110 transition-transform">
+                        {getPaymentIcon(selectedAgendamento.forma_pagamento)}
                       </div>
                       <div className="flex-1">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Duração</p>
-                        <p className="font-semibold">
-                          {format(selectedAgendamento.tempo_inicio, "HH:mm")} - {format(selectedAgendamento.tempo_fim, "HH:mm")}
-                        </p>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Pagamento</p>
+                        <p className="font-bold text-lg text-foreground">{selectedAgendamento.forma_pagamento}</p>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 {/* Observações */}
                 {selectedAgendamento.observacoes && (
-                  <div className="p-4 bg-muted/30 rounded-lg border">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-2">Observações do Atendimento</p>
-                    <p className="text-sm leading-relaxed">{selectedAgendamento.observacoes}</p>
+                  <div className="relative overflow-hidden bg-gradient-to-br from-blue-500/5 to-blue-500/10 rounded-xl p-5 border border-blue-500/20">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-blue-500/10">
+                        <Receipt className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2">Observações do Atendimento</p>
+                        <p className="text-sm leading-relaxed text-foreground">{selectedAgendamento.observacoes}</p>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Alturas do Corte */}
+                {/* Alturas do Corte - Design Premium */}
                 {selectedAgendamento.alturas_corte && Object.keys(selectedAgendamento.alturas_corte).some(key => 
                   key !== 'observacao_extra' && selectedAgendamento.alturas_corte![key as keyof typeof selectedAgendamento.alturas_corte] !== undefined
                 ) && (
-                  <div className="p-4 bg-muted/30 rounded-lg border space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-background">
-                        <Ruler className="h-4 w-4 text-primary" />
+                  <div className="relative overflow-hidden bg-gradient-to-br from-purple-500/5 via-pink-500/5 to-purple-500/10 rounded-xl p-6 border border-purple-500/20 shadow-lg">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
+                    <div className="relative space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
+                          <Ruler className="h-5 w-5 text-purple-600" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Especificações do Corte</p>
+                          <p className="text-sm text-muted-foreground">Suas preferências salvas</p>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Numerações do Corte</p>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {selectedAgendamento.alturas_corte.lateral_esquerda !== undefined && (
-                        <div className="bg-background p-3 rounded-lg border text-center">
-                          <span className="text-xs text-muted-foreground block mb-1">Lateral Esq.</span>
-                          <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.lateral_esquerda}</span>
-                          <span className="text-xs text-muted-foreground">mm</span>
-                        </div>
-                      )}
-                      {selectedAgendamento.alturas_corte.lateral_direita !== undefined && (
-                        <div className="bg-background p-3 rounded-lg border text-center">
-                          <span className="text-xs text-muted-foreground block mb-1">Lateral Dir.</span>
-                          <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.lateral_direita}</span>
-                          <span className="text-xs text-muted-foreground">mm</span>
-                        </div>
-                      )}
-                      {selectedAgendamento.alturas_corte.nuca !== undefined && (
-                        <div className="bg-background p-3 rounded-lg border text-center">
-                          <span className="text-xs text-muted-foreground block mb-1">Nuca</span>
-                          <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.nuca}</span>
-                          <span className="text-xs text-muted-foreground">mm</span>
-                        </div>
-                      )}
-                      {selectedAgendamento.alturas_corte.topo !== undefined && (
-                        <div className="bg-background p-3 rounded-lg border text-center">
-                          <span className="text-xs text-muted-foreground block mb-1">Topo</span>
-                          <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.topo}</span>
-                          <span className="text-xs text-muted-foreground">mm</span>
-                        </div>
-                      )}
-                      {selectedAgendamento.alturas_corte.frente !== undefined && (
-                        <div className="bg-background p-3 rounded-lg border text-center">
-                          <span className="text-xs text-muted-foreground block mb-1">Frente</span>
-                          <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.frente}</span>
-                          <span className="text-xs text-muted-foreground">mm</span>
-                        </div>
-                      )}
-                      {selectedAgendamento.alturas_corte.barba !== undefined && (
-                        <div className="bg-background p-3 rounded-lg border text-center">
-                          <span className="text-xs text-muted-foreground block mb-1">Barba</span>
-                          <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.barba}</span>
-                          <span className="text-xs text-muted-foreground">mm</span>
-                        </div>
-                      )}
-                    </div>
-                    {selectedAgendamento.alturas_corte.observacao_extra && (
-                      <div className="pt-2 border-t">
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {selectedAgendamento.alturas_corte.observacao_extra}
-                        </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {selectedAgendamento.alturas_corte.lateral_esquerda !== undefined && (
+                          <div className="group relative bg-background/80 backdrop-blur-sm p-4 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-2 font-semibold">Lateral Esquerda</span>
+                            <div className="flex items-baseline justify-center gap-1">
+                              <span className="font-black text-3xl text-purple-600">{selectedAgendamento.alturas_corte.lateral_esquerda}</span>
+                              <span className="text-xs text-muted-foreground font-medium">mm</span>
+                            </div>
+                          </div>
+                        )}
+                        {selectedAgendamento.alturas_corte.lateral_direita !== undefined && (
+                          <div className="group relative bg-background/80 backdrop-blur-sm p-4 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-2 font-semibold">Lateral Direita</span>
+                            <div className="flex items-baseline justify-center gap-1">
+                              <span className="font-black text-3xl text-purple-600">{selectedAgendamento.alturas_corte.lateral_direita}</span>
+                              <span className="text-xs text-muted-foreground font-medium">mm</span>
+                            </div>
+                          </div>
+                        )}
+                        {selectedAgendamento.alturas_corte.nuca !== undefined && (
+                          <div className="group relative bg-background/80 backdrop-blur-sm p-4 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-2 font-semibold">Nuca</span>
+                            <div className="flex items-baseline justify-center gap-1">
+                              <span className="font-black text-3xl text-purple-600">{selectedAgendamento.alturas_corte.nuca}</span>
+                              <span className="text-xs text-muted-foreground font-medium">mm</span>
+                            </div>
+                          </div>
+                        )}
+                        {selectedAgendamento.alturas_corte.topo !== undefined && (
+                          <div className="group relative bg-background/80 backdrop-blur-sm p-4 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-2 font-semibold">Topo</span>
+                            <div className="flex items-baseline justify-center gap-1">
+                              <span className="font-black text-3xl text-purple-600">{selectedAgendamento.alturas_corte.topo}</span>
+                              <span className="text-xs text-muted-foreground font-medium">mm</span>
+                            </div>
+                          </div>
+                        )}
+                        {selectedAgendamento.alturas_corte.frente !== undefined && (
+                          <div className="group relative bg-background/80 backdrop-blur-sm p-4 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-2 font-semibold">Frente</span>
+                            <div className="flex items-baseline justify-center gap-1">
+                              <span className="font-black text-3xl text-purple-600">{selectedAgendamento.alturas_corte.frente}</span>
+                              <span className="text-xs text-muted-foreground font-medium">mm</span>
+                            </div>
+                          </div>
+                        )}
+                        {selectedAgendamento.alturas_corte.barba !== undefined && (
+                          <div className="group relative bg-background/80 backdrop-blur-sm p-4 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-2 font-semibold">Barba</span>
+                            <div className="flex items-baseline justify-center gap-1">
+                              <span className="font-black text-3xl text-purple-600">{selectedAgendamento.alturas_corte.barba}</span>
+                              <span className="text-xs text-muted-foreground font-medium">mm</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
+                      {selectedAgendamento.alturas_corte.observacao_extra && (
+                        <div className="pt-3 border-t border-purple-500/20">
+                          <p className="text-sm text-muted-foreground leading-relaxed italic">
+                            💡 {selectedAgendamento.alturas_corte.observacao_extra}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {/* Valor e Pagamento */}
-                <div className="flex items-center justify-between p-4 bg-gradient-to-br from-muted/50 to-muted/30 rounded-lg border-2">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-background">
-                      {getPaymentIcon(selectedAgendamento.forma_pagamento)}
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Pagamento</p>
-                      <p className="font-semibold">{selectedAgendamento.forma_pagamento}</p>
-                    </div>
+                {/* Footer com informações adicionais */}
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/30 via-muted/20 to-muted/30 rounded-xl border border-primary/10">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span>Atendimento concluído com sucesso</span>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Total</p>
-                    <p className="font-bold text-2xl text-primary">R$ {selectedAgendamento.preco.toFixed(2)}</p>
-                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    ID: {selectedAgendamento.id.substring(0, 8)}
+                  </Badge>
                 </div>
               </div>
             )}
@@ -380,20 +475,38 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
   return (
     <>
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <CheckCircle className="h-5 w-5" />
             Últimos Agendamentos
           </CardTitle>
+          
+          {/* Filtro de Serviço */}
+          {servicosUnicos.length > 0 && (
+            <Select value={filtroServico} onValueChange={setFiltroServico}>
+              <SelectTrigger className="w-full sm:w-[280px]">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Filtrar por serviço" />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                <SelectItem value="todos">Todos os serviços</SelectItem>
+                {servicosUnicos.map((servico) => (
+                  <SelectItem key={servico} value={servico}>
+                    {servico}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardHeader>
         <CardContent>
           {loading ? (
             <p>Carregando...</p>
-          ) : agendamentos.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">Nenhum agendamento concluído</p>
+          ) : agendamentosFiltrados.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">Nenhum agendamento encontrado</p>
           ) : (
             <div className="space-y-2">
-              {agendamentos.map((appointment, index) => (
+              {agendamentosFiltrados.map((appointment, index) => (
                 <div 
                   key={index} 
                   className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-muted/10 transition-colors"
@@ -417,163 +530,222 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
 
       {/* Modal de Detalhes do Agendamento */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader className="border-b pb-4">
-            <DialogTitle className="flex items-center gap-3 text-xl">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Receipt className="h-5 w-5 text-primary" />
+        <DialogContent className="max-w-[calc(100vw-2rem)] md:max-w-3xl max-h-[90vh] overflow-y-auto bg-gradient-to-br from-background via-background to-primary/5 p-4 md:p-6">
+          <DialogHeader className="border-b pb-3 md:pb-4 relative">
+            <div className="absolute -top-2 -right-2 w-32 h-32 bg-primary/5 rounded-full blur-3xl" />
+            <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xl md:text-2xl">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30">
+                  <Receipt className="h-6 w-6 text-primary" />
+                </div>
+                <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                  Detalhes do Serviço
+                </span>
               </div>
-              Detalhes do Agendamento
+              <Badge className="bg-green-500/10 text-green-600 border-green-500/30 hover:bg-green-500/20">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Concluído
+              </Badge>
             </DialogTitle>
           </DialogHeader>
           
           {loadingDetails ? (
-            <div className="flex items-center justify-center p-12">
-              <div className="text-center space-y-2">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                <span className="text-sm text-muted-foreground">Carregando detalhes...</span>
+            <div className="flex items-center justify-center p-16">
+              <div className="text-center space-y-3">
+                <div className="relative">
+                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary/20 border-t-primary mx-auto"></div>
+                  <div className="absolute inset-0 rounded-full bg-primary/5 animate-pulse"></div>
+                </div>
+                <span className="text-sm text-muted-foreground font-medium">Carregando detalhes...</span>
               </div>
             </div>
           ) : selectedAgendamento && (
-            <div className="space-y-6 pt-2">
-              {/* Informações do Serviço */}
-              <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl p-4 border border-primary/20">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-3">Serviço Realizado</p>
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-background/80">
-                    <Calendar className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg mb-1">{selectedAgendamento.servico_nome}</h3>
-                    <p className="text-sm text-muted-foreground">
+            <div className="space-y-5 pt-3">
+              {/* Hero Card - Informações Principais */}
+              <div className="relative overflow-hidden bg-muted/30 rounded-xl md:rounded-2xl p-4 md:p-6 shadow-xl border">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+                <div className="relative space-y-3 md:space-y-4">
+                  {/* Serviço e Data */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Calendar className="h-4 md:h-5 w-4 md:w-5 text-primary" />
+                      <span className="text-[10px] md:text-xs uppercase tracking-wider text-muted-foreground font-semibold">Serviço Realizado</span>
+                    </div>
+                    <h3 className="font-bold text-lg md:text-2xl mb-2">{selectedAgendamento.servico_nome}</h3>
+                    <p className="text-xs md:text-sm text-foreground capitalize">
                       {format(selectedAgendamento.data_conclusao || new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs md:text-sm text-muted-foreground">
                       {format(selectedAgendamento.data_conclusao || new Date(), "'às' HH:mm", { locale: ptBR })}
                     </p>
                   </div>
+                  
+                  {/* Valor Total */}
+                  <div className="bg-primary/10 backdrop-blur-sm rounded-lg md:rounded-xl p-3 md:p-4 border border-primary/20">
+                    <p className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Valor Total</p>
+                    <p className="font-bold text-2xl md:text-3xl text-primary">R$ {selectedAgendamento.preco.toFixed(2)}</p>
+                  </div>
+
+                  {/* Tempo de Duração destacado */}
+                  {selectedAgendamento.tempo_inicio && selectedAgendamento.tempo_fim && (() => {
+                    const duracao = Math.round((selectedAgendamento.tempo_fim.getTime() - selectedAgendamento.tempo_inicio.getTime()) / 60000);
+                    return (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 pt-3 border-t">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3 md:h-4 w-3 md:w-4 text-muted-foreground" />
+                          <span className="text-xs md:text-sm text-foreground">
+                            {format(selectedAgendamento.tempo_inicio, "HH:mm")} - {format(selectedAgendamento.tempo_fim, "HH:mm")}
+                          </span>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] md:text-xs">
+                          {duracao} minutos de atendimento
+                        </Badge>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
-              <div className="grid gap-4">
-                {/* Funcionário */}
+              {/* Grid de Informações Importantes */}
+              <div className="grid md:grid-cols-2 gap-3 md:gap-4">
+                {/* Profissional */}
                 {selectedAgendamento.funcionario_nome && (
-                  <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                    <div className="p-2 rounded-lg bg-background">
-                      <User className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Profissional</p>
-                      <p className="font-semibold">{selectedAgendamento.funcionario_nome}</p>
+                  <div className="group relative overflow-hidden bg-gradient-to-br from-muted/50 to-muted/30 rounded-lg md:rounded-xl p-4 md:p-5 border border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg">
+                    <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
+                    <div className="relative flex items-center gap-3 md:gap-4">
+                      <div className="p-2 md:p-3 rounded-lg md:rounded-xl bg-primary/10 border border-primary/20 group-hover:scale-110 transition-transform">
+                        <User className="h-5 md:h-6 w-5 md:w-6 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-0.5 md:mb-1">Atendido por</p>
+                        <p className="font-bold text-base md:text-lg text-foreground">{selectedAgendamento.funcionario_nome}</p>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Tempo de Atendimento */}
-                {selectedAgendamento.tempo_inicio && selectedAgendamento.tempo_fim && (
-                  <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                    <div className="p-2 rounded-lg bg-background">
-                      <Clock className="h-5 w-5 text-primary" />
+                {/* Forma de Pagamento */}
+                <div className="group relative overflow-hidden bg-gradient-to-br from-muted/50 to-muted/30 rounded-lg md:rounded-xl p-4 md:p-5 border border-primary/20 hover:border-primary/40 transition-all hover:shadow-lg">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:bg-primary/10 transition-colors" />
+                  <div className="relative flex items-center gap-3 md:gap-4">
+                    <div className="p-2 md:p-3 rounded-lg md:rounded-xl bg-green-500/10 border border-green-500/20 group-hover:scale-110 transition-transform">
+                      {getPaymentIcon(selectedAgendamento.forma_pagamento)}
                     </div>
                     <div className="flex-1">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Duração</p>
-                      <p className="font-semibold">
-                        {format(selectedAgendamento.tempo_inicio, "HH:mm")} - {format(selectedAgendamento.tempo_fim, "HH:mm")}
-                      </p>
+                      <p className="text-[10px] md:text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-0.5 md:mb-1">Pagamento</p>
+                      <p className="font-bold text-base md:text-lg text-foreground">{selectedAgendamento.forma_pagamento}</p>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
 
               {/* Observações */}
               {selectedAgendamento.observacoes && (
-                <div className="p-4 bg-muted/30 rounded-lg border">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-2">Observações do Atendimento</p>
-                  <p className="text-sm leading-relaxed">{selectedAgendamento.observacoes}</p>
+                <div className="relative overflow-hidden bg-gradient-to-br from-blue-500/5 to-blue-500/10 rounded-lg md:rounded-xl p-4 md:p-5 border border-blue-500/20">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/10">
+                      <Receipt className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2">Observações do Atendimento</p>
+                      <p className="text-sm leading-relaxed text-foreground">{selectedAgendamento.observacoes}</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* Alturas do Corte */}
+              {/* Alturas do Corte - Design Premium */}
               {selectedAgendamento.alturas_corte && Object.keys(selectedAgendamento.alturas_corte).some(key => 
                 key !== 'observacao_extra' && selectedAgendamento.alturas_corte![key as keyof typeof selectedAgendamento.alturas_corte] !== undefined
               ) && (
-                <div className="p-4 bg-muted/30 rounded-lg border space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-background">
-                      <Ruler className="h-4 w-4 text-primary" />
+                <div className="relative overflow-hidden bg-gradient-to-br from-purple-500/5 via-pink-500/5 to-purple-500/10 rounded-lg md:rounded-xl p-4 md:p-6 border border-purple-500/20 shadow-lg">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl" />
+                  <div className="relative space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
+                        <Ruler className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Especificações do Corte</p>
+                        <p className="text-sm text-muted-foreground">Suas preferências salvas</p>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Numerações do Corte</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {selectedAgendamento.alturas_corte.lateral_esquerda !== undefined && (
-                      <div className="bg-background p-3 rounded-lg border text-center">
-                        <span className="text-xs text-muted-foreground block mb-1">Lateral Esq.</span>
-                        <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.lateral_esquerda}</span>
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                    )}
-                    {selectedAgendamento.alturas_corte.lateral_direita !== undefined && (
-                      <div className="bg-background p-3 rounded-lg border text-center">
-                        <span className="text-xs text-muted-foreground block mb-1">Lateral Dir.</span>
-                        <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.lateral_direita}</span>
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                    )}
-                    {selectedAgendamento.alturas_corte.nuca !== undefined && (
-                      <div className="bg-background p-3 rounded-lg border text-center">
-                        <span className="text-xs text-muted-foreground block mb-1">Nuca</span>
-                        <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.nuca}</span>
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                    )}
-                    {selectedAgendamento.alturas_corte.topo !== undefined && (
-                      <div className="bg-background p-3 rounded-lg border text-center">
-                        <span className="text-xs text-muted-foreground block mb-1">Topo</span>
-                        <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.topo}</span>
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                    )}
-                    {selectedAgendamento.alturas_corte.frente !== undefined && (
-                      <div className="bg-background p-3 rounded-lg border text-center">
-                        <span className="text-xs text-muted-foreground block mb-1">Frente</span>
-                        <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.frente}</span>
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                    )}
-                    {selectedAgendamento.alturas_corte.barba !== undefined && (
-                      <div className="bg-background p-3 rounded-lg border text-center">
-                        <span className="text-xs text-muted-foreground block mb-1">Barba</span>
-                        <span className="font-bold text-lg">{selectedAgendamento.alturas_corte.barba}</span>
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                    )}
-                  </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {selectedAgendamento.alturas_corte.lateral_esquerda !== undefined && (
+                        <div className="group relative bg-background/80 backdrop-blur-sm p-3 md:p-4 rounded-lg md:rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                          <span className="text-[9px] md:text-[10px] text-muted-foreground uppercase tracking-wider block mb-1 md:mb-2 font-semibold">Lateral Esquerda</span>
+                          <div className="flex items-baseline justify-center gap-1">
+                            <span className="font-black text-2xl md:text-3xl text-purple-600">{selectedAgendamento.alturas_corte.lateral_esquerda}</span>
+                            <span className="text-xs text-muted-foreground font-medium">mm</span>
+                          </div>
+                        </div>
+                      )}
+                      {selectedAgendamento.alturas_corte.lateral_direita !== undefined && (
+                        <div className="group relative bg-background/80 backdrop-blur-sm p-3 md:p-4 rounded-lg md:rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                          <span className="text-[9px] md:text-[10px] text-muted-foreground uppercase tracking-wider block mb-1 md:mb-2 font-semibold">Lateral Direita</span>
+                          <div className="flex items-baseline justify-center gap-1">
+                            <span className="font-black text-2xl md:text-3xl text-purple-600">{selectedAgendamento.alturas_corte.lateral_direita}</span>
+                            <span className="text-xs text-muted-foreground font-medium">mm</span>
+                          </div>
+                        </div>
+                      )}
+                      {selectedAgendamento.alturas_corte.nuca !== undefined && (
+                        <div className="group relative bg-background/80 backdrop-blur-sm p-3 md:p-4 rounded-lg md:rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                          <span className="text-[9px] md:text-[10px] text-muted-foreground uppercase tracking-wider block mb-1 md:mb-2 font-semibold">Nuca</span>
+                          <div className="flex items-baseline justify-center gap-1">
+                            <span className="font-black text-2xl md:text-3xl text-purple-600">{selectedAgendamento.alturas_corte.nuca}</span>
+                            <span className="text-xs text-muted-foreground font-medium">mm</span>
+                          </div>
+                        </div>
+                      )}
+                      {selectedAgendamento.alturas_corte.topo !== undefined && (
+                        <div className="group relative bg-background/80 backdrop-blur-sm p-3 md:p-4 rounded-lg md:rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                          <span className="text-[9px] md:text-[10px] text-muted-foreground uppercase tracking-wider block mb-1 md:mb-2 font-semibold">Topo</span>
+                          <div className="flex items-baseline justify-center gap-1">
+                            <span className="font-black text-2xl md:text-3xl text-purple-600">{selectedAgendamento.alturas_corte.topo}</span>
+                            <span className="text-xs text-muted-foreground font-medium">mm</span>
+                          </div>
+                        </div>
+                      )}
+                      {selectedAgendamento.alturas_corte.frente !== undefined && (
+                        <div className="group relative bg-background/80 backdrop-blur-sm p-3 md:p-4 rounded-lg md:rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                          <span className="text-[9px] md:text-[10px] text-muted-foreground uppercase tracking-wider block mb-1 md:mb-2 font-semibold">Frente</span>
+                          <div className="flex items-baseline justify-center gap-1">
+                            <span className="font-black text-2xl md:text-3xl text-purple-600">{selectedAgendamento.alturas_corte.frente}</span>
+                            <span className="text-xs text-muted-foreground font-medium">mm</span>
+                          </div>
+                        </div>
+                      )}
+                      {selectedAgendamento.alturas_corte.barba !== undefined && (
+                        <div className="group relative bg-background/80 backdrop-blur-sm p-3 md:p-4 rounded-lg md:rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all hover:shadow-md text-center">
+                          <span className="text-[9px] md:text-[10px] text-muted-foreground uppercase tracking-wider block mb-1 md:mb-2 font-semibold">Barba</span>
+                          <div className="flex items-baseline justify-center gap-1">
+                            <span className="font-black text-2xl md:text-3xl text-purple-600">{selectedAgendamento.alturas_corte.barba}</span>
+                            <span className="text-xs text-muted-foreground font-medium">mm</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {selectedAgendamento.alturas_corte.observacao_extra && (
-                      <div className="pt-2 border-t">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-2">Detalhes do Serviço</p>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {selectedAgendamento.alturas_corte.observacao_extra}
+                      <div className="pt-3 border-t border-purple-500/20">
+                        <p className="text-sm text-muted-foreground leading-relaxed italic">
+                          💡 {selectedAgendamento.alturas_corte.observacao_extra}
                         </p>
                       </div>
                     )}
+                  </div>
                 </div>
               )}
 
-              {/* Valor e Pagamento */}
-              <div className="flex items-center justify-between p-4 bg-gradient-to-br from-muted/50 to-muted/30 rounded-lg border-2">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-background">
-                    {getPaymentIcon(selectedAgendamento.forma_pagamento)}
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Pagamento</p>
-                    <p className="font-semibold">{selectedAgendamento.forma_pagamento}</p>
-                  </div>
+              {/* Footer com informações adicionais */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 p-3 md:p-4 bg-gradient-to-r from-muted/30 via-muted/20 to-muted/30 rounded-lg md:rounded-xl border border-primary/10">
+                <div className="flex items-center gap-2 text-[10px] md:text-xs text-muted-foreground">
+                  <CheckCircle className="h-3 md:h-4 w-3 md:w-4 text-green-600" />
+                  <span>Atendimento concluído com sucesso</span>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-0.5">Total</p>
-                  <p className="font-bold text-2xl text-primary">R$ {selectedAgendamento.preco.toFixed(2)}</p>
-                </div>
+                <Badge variant="outline" className="text-[10px] md:text-xs">
+                  ID: {selectedAgendamento.id.substring(0, 8)}
+                </Badge>
               </div>
             </div>
           )}

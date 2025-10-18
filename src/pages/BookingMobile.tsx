@@ -10,12 +10,14 @@ import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Scissors, Clock, CreditCard, Calendar as CalendarIcon, User, ShoppingCart, ArrowLeft, Smartphone, Banknote } from "lucide-react";
+import { Scissors, Clock, CreditCard, Calendar as CalendarIcon, User, ShoppingCart, ArrowLeft, Smartphone } from "lucide-react";
 import { format, addDays, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { PixPayment } from '@/components/PixPayment';
 import { ClientSelectionModal } from '@/components/ClientSelectionModal';
 import { type BookingData } from '@/components/ServiceBooking';
+import { CardPaymentForm } from '@/components/CardPaymentForm';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface Service {
   id: string;
@@ -87,6 +89,8 @@ const BookingMobile = () => {
   const [pixBookingData, setPixBookingData] = useState<BookingData | null>(null);
   const [showClientModal, setShowClientModal] = useState(false);
   const [selectedClientData, setSelectedClientData] = useState<ClienteData | null>(null);
+  const [showCardPayment, setShowCardPayment] = useState(false);
+  const [pagarApenasUmTerco, setPagarApenasUmTerco] = useState(false);
   const [configAgendamento, setConfigAgendamento] = useState<{
     dias_semana: number[];
     horarios_disponiveis: string[];
@@ -369,6 +373,8 @@ const BookingMobile = () => {
       return;
     }
 
+    const valorFinal = pagarApenasUmTerco ? selectedService.preco / 3 : selectedService.preco;
+
     // Se for PIX, preparar dados e mostrar tela de pagamento
     if (paymentMethod === "PIX") {
       const pixData: BookingData & {
@@ -381,7 +387,7 @@ const BookingMobile = () => {
         serviceId: selectedService.id,
         date: format(selectedDate, "dd/MM/yyyy", { locale: ptBR }),
         time: selectedTime,
-        amount: selectedService.preco,
+        amount: valorFinal,
         sala_atendimento: selectedService.sala_atendimento || '',
         selectedService,
         selectedEmployee,
@@ -394,14 +400,18 @@ const BookingMobile = () => {
       return;
     }
 
-    // Se for Dinheiro, mostrar modal de seleção de cliente
-    if (paymentMethod === "Dinheiro Físico") {
-      setShowClientModal(true);
+    // Se for Cartão de Crédito ou Débito, mostrar formulário de cartão
+    if (paymentMethod === "credit_card" || paymentMethod === "debit_card") {
+      setShowCardPayment(true);
       return;
     }
 
-    // Para outros métodos de pagamento, salvar diretamente
-    await saveAppointmentToFirestore();
+    // Para outros métodos de pagamento (PIX), o fluxo já está configurado acima
+    toast({
+      title: "Erro",
+      description: "Método de pagamento inválido.",
+      variant: "destructive"
+    });
   };
 
   const handleClientSelection = (clienteData: ClienteData) => {
@@ -411,7 +421,7 @@ const BookingMobile = () => {
     saveAppointmentToFirestore(clienteData);
   };
 
-  const saveAppointmentToFirestore = async (clienteData?: ClienteData) => {
+  const saveAppointmentToFirestore = async (clienteData?: ClienteData, paymentId?: string) => {
     if (!selectedService || !selectedEmployee || !selectedDate || !selectedTime) return;
 
     setIsLoading(true);
@@ -438,7 +448,11 @@ const BookingMobile = () => {
       const tempoFim = new Date(appointmentDate);
       tempoFim.setHours(hours, minutes + duracaoAtendimento, 0, 0);
 
-      const newAppointment = {
+      const valorTotal = selectedService.preco;
+      const valorPago = pagarApenasUmTerco ? valorTotal / 3 : valorTotal;
+      const valorRestante = pagarApenasUmTerco ? (valorTotal * 2) / 3 : 0;
+
+      const newAppointment: any = {
         usuario_id: usuarioId,
         usuario_nome: userName,
         usuario_email: userEmail,
@@ -449,19 +463,49 @@ const BookingMobile = () => {
         sala_atendimento: selectedService.sala_atendimento,
         funcionario_id: selectedEmployee.id,
         funcionario_nome: selectedEmployee.nome,
-        preco: selectedService.preco,
+        preco: valorTotal,
         data: appointmentDate,
         tempo_inicio: tempoInicio,
         tempo_fim: tempoFim,
         forma_pagamento: paymentMethod,
-        status: paymentMethod === 'PIX' ? 'aguardando_confirmacao' : 'confirmado',
+        status: (paymentMethod === 'PIX' || paymentMethod === 'credit_card' || paymentMethod === 'debit_card') ? 'aguardando_confirmacao' : 'confirmado',
         data_criacao: new Date(),
         duracao: duracaoAtendimento,
-        presente: paymentMethod === 'PIX' ? false : true,
+        presente: (paymentMethod === 'PIX' || paymentMethod === 'credit_card' || paymentMethod === 'debit_card') ? false : true,
         timestamp: new Date().getTime()
       };
 
+      // Adicionar campos de pagamento parcial se aplicável
+      if (pagarApenasUmTerco) {
+        newAppointment.tipo_pagamento = 'parcial';
+        newAppointment.valor_total = valorTotal;
+        newAppointment.valor_pago = valorPago;
+        newAppointment.valor_restante = valorRestante;
+        newAppointment.status_restante = 'pendente';
+      }
+
+      // Adicionar payment_id do Mercado Pago se fornecido
+      if (paymentId) {
+        newAppointment.payment_id = paymentId;
+      }
+
+      // Adicionar tipo de pagamento com cartão
+      if (paymentMethod === 'credit_card') {
+        newAppointment.tipo_pagamento_cartao = 'credito';
+      } else if (paymentMethod === 'debit_card') {
+        newAppointment.tipo_pagamento_cartao = 'debito';
+      }
+
       await addDoc(collection(db, 'fila'), newAppointment);
+
+      // Notificar admins sobre novo agendamento
+      const { notifyAdminsNewQueue } = await import('@/utils/notify-admins');
+      notifyAdminsNewQueue({
+        clienteNome: userName,
+        servicoNome: selectedService.nome,
+        dataAgendamento: appointmentDate,
+        appointmentId: 'mobile-booking'
+      }).catch(error => console.error('Erro ao notificar admins:', error));
 
       toast({
         title: "Agendamento confirmado!",
@@ -498,6 +542,8 @@ const BookingMobile = () => {
     setSelectedTime("");
     setPaymentMethod("pix");
     setSelectedClientData(null);
+    setPagarApenasUmTerco(false);
+    setShowCardPayment(false);
   };
 
   const isDateDisabled = (date: Date) => {
@@ -522,6 +568,50 @@ const BookingMobile = () => {
     
     return false;
   };
+
+  const handleCardPaymentSuccess = async (paymentId: string) => {
+    // Salvar agendamento com payment_id do Mercado Pago
+    await saveAppointmentToFirestore(undefined, paymentId);
+    setShowCardPayment(false);
+  };
+
+  const handleCardPaymentError = (error: string) => {
+    toast({
+      title: "Erro no pagamento",
+      description: error,
+      variant: "destructive"
+    });
+  };
+
+  if (showCardPayment && selectedService) {
+    const valorFinal = pagarApenasUmTerco ? selectedService.preco / 3 : selectedService.preco;
+    
+    return (
+      <div className="min-h-screen bg-background pb-safe">
+        <div className="max-w-2xl mx-auto px-4 py-6">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowCardPayment(false)}
+            className="mb-4"
+          >
+            ← Voltar
+          </Button>
+          <CardPaymentForm
+            amount={valorFinal}
+            description={`${selectedService.nome} - ${format(selectedDate!, "dd/MM/yyyy")} às ${selectedTime}`}
+            onSuccess={handleCardPaymentSuccess}
+            onError={handleCardPaymentError}
+            cardType={paymentMethod as 'credit_card' | 'debit_card'}
+            clientData={{
+              nome: userData?.nome || currentUser?.displayName || '',
+              email: userData?.email || currentUser?.email || '',
+              cpf: userData?.cpf || ''
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (showPixPayment && pixBookingData) {
     return (
@@ -801,15 +891,37 @@ const BookingMobile = () => {
                         <span>PIX</span>
                       </div>
                     </Label>
-                    <Label htmlFor="dinheiro" className="cursor-pointer">
+                    <Label htmlFor="credit_card" className="cursor-pointer">
                       <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
-                        <RadioGroupItem value="Dinheiro Físico" id="dinheiro" />
-                        <Banknote className="h-5 w-5 text-primary" />
-                        <span>Dinheiro</span>
+                        <RadioGroupItem value="credit_card" id="credit_card" />
+                        <CreditCard className="h-5 w-5 text-primary" />
+                        <span>Cartão de Crédito (Em até 12x)</span>
+                      </div>
+                    </Label>
+                    <Label htmlFor="debit_card" className="cursor-pointer">
+                      <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
+                        <RadioGroupItem value="debit_card" id="debit_card" />
+                        <CreditCard className="h-5 w-5 text-primary" />
+                        <span>Cartão de Débito</span>
                       </div>
                     </Label>
                   </div>
                 </RadioGroup>
+              </div>
+
+              {/* Opção de pagamento parcial */}
+              <div className="flex items-center space-x-2 p-4 border rounded-lg bg-muted/30">
+                <Checkbox
+                  id="parcial"
+                  checked={pagarApenasUmTerco}
+                  onCheckedChange={(checked) => setPagarApenasUmTerco(checked as boolean)}
+                />
+                <Label htmlFor="parcial" className="cursor-pointer text-sm">
+                  Pagar apenas 1/3 agora (R$ {(selectedService.preco / 3).toFixed(2)})
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    Restante (R$ {((selectedService.preco * 2) / 3).toFixed(2)}) após o serviço
+                  </span>
+                </Label>
               </div>
 
               <Button 
@@ -817,7 +929,15 @@ const BookingMobile = () => {
                 disabled={isLoading} 
                 className="w-full"
               >
-                {isLoading ? "Confirmando..." : paymentMethod === "PIX" ? "Pagar com PIX" : "Confirmar Agendamento"}
+                {isLoading 
+                  ? "Confirmando..." 
+                  : paymentMethod === "PIX" 
+                    ? `Pagar com PIX ${pagarApenasUmTerco ? `(R$ ${(selectedService.preco / 3).toFixed(2)})` : ''}` 
+                    : paymentMethod === "credit_card" 
+                      ? `Pagar com Cartão de Crédito ${pagarApenasUmTerco ? `(R$ ${(selectedService.preco / 3).toFixed(2)})` : ''}` 
+                      : paymentMethod === "debit_card" 
+                        ? `Pagar com Cartão de Débito ${pagarApenasUmTerco ? `(R$ ${(selectedService.preco / 3).toFixed(2)})` : ''}` 
+                        : "Confirmar Agendamento"}
               </Button>
             </CardContent>
           </Card>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,12 +14,16 @@ import {
   Clock, 
   XCircle,
   User,
-  Mail
+  Mail,
+  Calculator,
+  DollarSign
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Comanda } from '@/hooks/useComandas';
-import { API_CONFIG, getHeaders } from '@/config/api';
 import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse, PaymentStatusResponse } from '@/types/mercadopago';
+import { supabase } from '@/lib/supabase';
+import { CalculadoraTrocoModal } from './CalculadoraTrocoModal';
+import { PagamentoMistoModal } from './PagamentoMistoModal';
 
 interface PagamentoComandaModalProps {
   open: boolean;
@@ -97,8 +101,23 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
     email: '',
     cpf: ''
   });
+  const [calculadoraTrocoOpen, setCalculadoraTrocoOpen] = useState(false);
+  const [pagamentoMistoOpen, setPagamentoMistoOpen] = useState(false);
   
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
+
+  // Criar elemento de áudio para notificação
+  useEffect(() => {
+    audioRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE');
+  }, []);
+
+  // Tocar som quando pagamento for aprovado
+  const playApprovalSound = () => {
+    if (audioRef.current) {
+      audioRef.current.play().catch(err => console.log('Erro ao tocar som:', err));
+    }
+  };
 
   // Pré-popular dados do usuário quando a comanda mudar
   React.useEffect(() => {
@@ -202,18 +221,31 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
         }
       };
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CREATE_PIX_PAYMENT}`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(paymentRequest)
+      console.log('Enviando requisição para criar pagamento PIX:', paymentRequest);
+      
+      // Usar supabase.functions.invoke ao invés de fetch direto
+      const { data, error: invokeError } = await supabase.functions.invoke('create-pix-payment', {
+        body: paymentRequest
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erro na API: ${response.status} - ${errorText}`);
+      console.log('Resposta da função:', { data, error: invokeError });
+
+      if (invokeError) {
+        console.error('Erro ao invocar função:', invokeError);
+        throw new Error(`Erro na API: ${invokeError.message || JSON.stringify(invokeError)}`);
       }
 
-      const result: MercadoPagoPaymentResponse = await response.json();
+      if (!data) {
+        throw new Error('Resposta vazia da API');
+      }
+
+      // Se data contém um erro
+      if (data.error) {
+        console.error('Erro retornado pela função:', data.error);
+        throw new Error(`Erro da API: ${data.error}${data.details ? ' - ' + data.details : ''}`);
+      }
+
+      const result: MercadoPagoPaymentResponse = data;
       
       const newPaymentData: PaymentData = {
         id: result.id.toString(),
@@ -246,52 +278,64 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
     }
   };
 
-  // Polling para verificar status do pagamento
+  // Polling para verificar status do pagamento (igual ao PixPayment)
   const startPaymentStatusPolling = (paymentId: string) => {
+    console.log(`Iniciando verificação de status para pagamento: ${paymentId}`);
+
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CHECK_PAYMENT_STATUS}`, {
-          method: 'POST',
-          headers: getHeaders(),
-          body: JSON.stringify({ paymentId })
+        const { data: statusData, error } = await supabase.functions.invoke('check-payment-status', {
+          body: { paymentId }
         });
 
-        if (response.ok) {
-          const statusData: PaymentStatusResponse = await response.json();
-          
+        if (error) {
+          console.error('Erro ao verificar status:', error);
+          return;
+        }
+
+        console.log('Status check response:', statusData);
+
+        if (statusData && statusData.status) {
           if (statusData.status !== paymentStatus) {
             setPaymentStatus(statusData.status);
-            
-              if (statusData.status === 'approved') {
-                clearInterval(interval);
-                toast({
-                  title: "Pagamento aprovado! ✅",
-                  description: "A comanda foi paga via PIX com sucesso."
-                });
-                
-                setTimeout(() => {
-                  if (comanda) {
-                    onPagamentoCompleto(comanda.id, 'PIX');
-                  }
-                  handleClose();
-                }, 2000);
+
+            if (statusData.status === 'approved') {
+              clearInterval(interval);
+
+              // Tocar som de aprovação
+              playApprovalSound();
+
+              toast({
+                title: "Pagamento aprovado! ✅",
+                description: "A comanda foi paga via PIX com sucesso."
+              });
+
+              setTimeout(() => {
+                if (comanda) {
+                  onPagamentoCompleto(comanda.id, 'PIX');
+                }
+                handleClose();
+              }, 2000);
             } else if (statusData.status === 'rejected' || statusData.status === 'cancelled') {
               clearInterval(interval);
               toast({
-                title: "Pagamento não aprovado",
-                description: "O pagamento PIX foi rejeitado ou cancelado.",
+                title: "Pagamento não processado",
+                description: "O pagamento PIX foi rejeitado ou cancelado. Tente novamente.",
                 variant: "destructive"
               });
             }
           }
         }
       } catch (error) {
-        console.error('Erro ao verificar status:', error);
+        console.error('Erro ao verificar status do pagamento:', error);
       }
-    }, 5000);
+    }, 5000); // Polling a cada 5 segundos
 
-    // Limpar o interval após 10 minutos
-    setTimeout(() => clearInterval(interval), 600000);
+    // Limpar o interval após 10 minutos (600 segundos)
+    setTimeout(() => {
+      clearInterval(interval);
+      console.log('Polling de status encerrado após 10 minutos');
+    }, 600000);
   };
 
   // Ir direto para confirmação usando dados da comanda
@@ -310,7 +354,27 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
   };
 
 
-  // Finalizar com dinheiro físico
+  // Finalizar com dinheiro físico (com calculadora de troco)
+  const handleDinheiroComCalculadora = () => {
+    setCalculadoraTrocoOpen(true);
+  };
+
+  const handleConfirmarTroco = (valorRecebido: number, troco: number) => {
+    if (!comanda || !selectedClientData) return;
+    
+    toast({
+      title: "Pagamento confirmado!",
+      description: `Comanda finalizada. Troco: R$ ${troco.toFixed(2)}`
+    });
+    
+    onPagamentoCompleto(comanda.id, 'Dinheiro Físico', {
+      cpf: selectedClientData.cpf,
+      telefone: selectedClientData.telefone
+    });
+    handleClose();
+  };
+
+  // Finalizar com dinheiro físico (sem calculadora)
   const finalizarComDinheiro = () => {
     if (!comanda || !selectedClientData) return;
     
@@ -322,6 +386,38 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
     onPagamentoCompleto(comanda.id, 'Dinheiro Físico', {
       cpf: selectedClientData.cpf,
       telefone: selectedClientData.telefone
+    });
+    handleClose();
+  };
+
+  // Pagamento Misto
+  const handlePagamentoMisto = () => {
+    if (!comanda) return;
+    
+    // Popular dados do cliente
+    setSelectedClientData({
+      nome: comanda.cliente_nome || '',
+      email: comanda.cliente_email || '',
+      telefone: comanda.cliente_telefone || '',
+      cpf: comanda.cliente_cpf || ''
+    });
+    
+    setPagamentoMistoOpen(true);
+  };
+
+  const handleConfirmarPagamentoMisto = async (valorDinheiro: number, valorPix: number) => {
+    if (!comanda) return;
+
+    toast({
+      title: "Processando pagamento misto...",
+      description: `Dinheiro: R$ ${valorDinheiro.toFixed(2)} | PIX: R$ ${valorPix.toFixed(2)}`
+    });
+
+    // TODO: Implementar lógica para processar pagamento misto
+    // Por enquanto, finaliza como misto
+    onPagamentoCompleto(comanda.id, 'Dinheiro Físico', {
+      cpf: selectedClientData?.cpf || '',
+      telefone: selectedClientData?.telefone || ''
     });
     handleClose();
   };
@@ -400,6 +496,21 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
                 <div className="font-medium">Dinheiro Físico</div>
                 <div className="text-sm text-muted-foreground">
                   Pagamento em espécie
+                </div>
+              </div>
+            </Button>
+
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full h-auto p-4 justify-start"
+              onClick={handlePagamentoMisto}
+            >
+              <DollarSign className="h-6 w-6 mr-3" />
+              <div className="text-left">
+                <div className="font-medium">Pagamento Misto</div>
+                <div className="text-sm text-muted-foreground">
+                  Parte dinheiro, parte PIX
                 </div>
               </div>
             </Button>
@@ -540,18 +651,45 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
               </Card>
             </div>
 
-            <div className="flex gap-3 pt-4">
+            <div className="flex gap-2 pt-4">
               <Button variant="outline" onClick={() => setStep('selection')} className="flex-1">
                 Voltar
               </Button>
+              <Button 
+                onClick={handleDinheiroComCalculadora} 
+                className="flex-1 gap-2"
+                variant="secondary"
+              >
+                <Calculator className="h-4 w-4" />
+                Com Troco
+              </Button>
               <Button onClick={finalizarComDinheiro} className="flex-1 bg-green-600 hover:bg-green-700">
-                Confirmar Pagamento
+                Confirmar
               </Button>
             </div>
           </div>
         )}
 
       </DialogContent>
+
+      {/* Modais Auxiliares */}
+      {comanda && (
+        <>
+          <CalculadoraTrocoModal
+            open={calculadoraTrocoOpen}
+            onOpenChange={setCalculadoraTrocoOpen}
+            valorTotal={comanda.total}
+            onConfirmar={handleConfirmarTroco}
+          />
+
+          <PagamentoMistoModal
+            open={pagamentoMistoOpen}
+            onOpenChange={setPagamentoMistoOpen}
+            valorTotal={comanda.total}
+            onConfirmar={handleConfirmarPagamentoMisto}
+          />
+        </>
+      )}
     </Dialog>
   );
 };

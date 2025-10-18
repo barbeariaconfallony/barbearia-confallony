@@ -2,9 +2,11 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Bell, BellOff } from 'lucide-react';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuth } from '@/contexts/AuthContext';
 
 export const NotificationPermissionButton: React.FC = () => {
-  const { permission, isSupported, requestPermission } = useNotifications();
+  const { currentUser } = useAuth();
+  const { permission, isSupported, requestPermission, fcmToken } = useNotifications(currentUser?.uid);
 
   if (!isSupported) {
     return null;

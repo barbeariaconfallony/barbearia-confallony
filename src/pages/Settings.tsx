@@ -216,6 +216,8 @@ export const Settings: React.FC = () => {
                   onChange={(e) => handleUserSettingsChange('email', e.target.value)}
                   placeholder="seu@email.com"
                   required
+                  readOnly
+                  className="bg-muted cursor-not-allowed"
                 />
               </div>
 

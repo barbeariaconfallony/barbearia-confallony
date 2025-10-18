@@ -95,7 +95,16 @@ export const ServiceBooking: React.FC<ServiceBookingProps> = ({ onPixPayment, on
         presente: true
       };
 
-      await addDoc(collection(db, 'fila'), appointmentData);
+      const docRef = await addDoc(collection(db, 'fila'), appointmentData);
+      
+      // Notificar admins sobre novo agendamento
+      const { notifyAdminsNewQueue } = await import('@/utils/notify-admins');
+      notifyAdminsNewQueue({
+        clienteNome: 'Cliente Walk-in',
+        servicoNome: selectedServiceData?.nome || '',
+        dataAgendamento: appointmentDate,
+        appointmentId: docRef.id
+      }).catch(error => console.error('Erro ao notificar admins:', error));
       
       toast({
         title: "Agendamento confirmado!",

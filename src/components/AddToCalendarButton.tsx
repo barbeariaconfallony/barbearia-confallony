@@ -82,8 +82,8 @@ export const AddToCalendarButton: React.FC<AddToCalendarButtonProps> = ({
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <Button variant={variant} size={size} className={className}>
-          <Calendar className="h-4 w-4 mr-2" />
-          Adicionar ao Calendário
+          <Calendar className={size === 'sm' ? 'h-3 w-3 mr-1 flex-shrink-0' : 'h-4 w-4 mr-2 flex-shrink-0'} />
+          <span className="truncate">Adicionar ao Calendário</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
