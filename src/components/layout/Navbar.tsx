@@ -13,12 +13,12 @@ const Navbar = () => {
   const {
     currentUser,
     userData,
-    logout
+    logout,
+    loading
   } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [localUserData, setLocalUserData] = useState<any>(null);
   const [navbarVisible, setNavbarVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const navigate = useNavigate();
 
@@ -54,32 +54,6 @@ const Navbar = () => {
     }
   }, [userData]);
 
-  // Controle de visibilidade da navbar ao rolar a página
-  useEffect(() => {
-    const handleScroll = () => {
-      if (typeof window !== 'undefined') {
-        if (window.scrollY > lastScrollY && window.scrollY > 100) {
-          // Rolando para baixo
-          setNavbarVisible(false);
-        } else {
-          // Rolando para cima
-          setNavbarVisible(true);
-        }
-        setLastScrollY(window.scrollY);
-      }
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
-
-  // Adiciona/remove classe no body quando navbar muda de visibilidade
-  useEffect(() => {
-    if (navbarVisible) {
-      document.body.classList.remove('navbar-hidden');
-    } else {
-      document.body.classList.add('navbar-hidden');
-    }
-  }, [navbarVisible]);
   const toggleMenu = () => setIsOpen(!isOpen);
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -117,6 +91,9 @@ const Navbar = () => {
   const displayName = currentUserData?.nome || currentUser?.displayName || 'Usuário';
   const displayEmail = currentUserData?.email || currentUser?.email || '';
   const avatarUrl = currentUserData?.avatar_url || maleProfileAvatar;
+  
+  // Só mostra o profile quando tiver dados reais carregados
+  const isUserDataLoaded = !loading && currentUserData && currentUserData.nome && currentUserData.nome !== 'Usuário';
   return <>
       {/* Botão flutuante para mostrar/ocultar navbar */}
       <button onClick={toggleNavbarVisibility} className={`fixed right-4 z-50 p-2 rounded-full bg-primary text-white shadow-lg transition-all duration-300 ${navbarVisible ? 'top-16 opacity-70 hover:opacity-100' : 'top-4 opacity-15 hover:opacity-100'}`} aria-label={navbarVisible ? "Ocultar barra de navegação" : "Mostrar barra de navegação"}>
@@ -160,7 +137,7 @@ const Navbar = () => {
               <ThemeSelector />
               
               {/* Profile Dropdown ou Login/Cadastro */}
-              {currentUser || localUserData ? <DropdownMenu>
+              {isUserDataLoaded ? <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-2 px-3 py-2 h-auto whitespace-nowrap">
                       <Avatar className="h-8 w-8 flex-shrink-0">
@@ -235,12 +212,12 @@ const Navbar = () => {
               <ThemeSelector />
               
               {/* Para usuários autenticados - mostra menu */}
-              {(currentUser || localUserData) && <Button variant="ghost" size="sm" onClick={toggleMenu} className="h-8 w-8 p-0">
+              {isUserDataLoaded && <Button variant="ghost" size="sm" onClick={toggleMenu} className="h-8 w-8 p-0">
                   {isOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
                 </Button>}
               
               {/* Para usuários não autenticados - mostra botões de login */}
-              {!(currentUser || localUserData) && <>
+              {!isUserDataLoaded && <>
                   <Link to="/login">
                     <Button variant="ghost" size="sm" className="text-xs px-2">
                       Entrar
@@ -256,7 +233,7 @@ const Navbar = () => {
           </div>
 
           {/* Mobile Navigation */}
-          {isOpen && (currentUser || localUserData) && <div className="lg:hidden">
+          {isOpen && isUserDataLoaded && <div className="lg:hidden">
               <div className="px-3 pt-3 pb-4 space-y-2 bg-card border-t border-border">
                 <Link to="/booking-local" className="block px-4 py-3 text-foreground hover:text-primary hover:bg-accent/50 rounded-lg transition-colors" onClick={toggleMenu}>
                   Agendar

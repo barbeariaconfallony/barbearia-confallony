@@ -5,17 +5,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { 
-  CreditCard, 
   Banknote,
   DollarSign,
   Check,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { updateDoc, doc } from 'firebase/firestore';
+import { updateDoc, doc, getDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { CardPaymentForm } from './CardPaymentForm';
 import { PixPayment } from './PixPayment';
+import type { BookingData } from './ServiceBooking';
 
 interface PagamentoRestanteModalProps {
   open: boolean;
@@ -25,6 +25,7 @@ interface PagamentoRestanteModalProps {
   valorTotal: number;
   valorPago: number;
   valorRestante: number;
+  usuarioId: string;
   clienteData: {
     nome: string;
     email: string;
@@ -33,7 +34,7 @@ interface PagamentoRestanteModalProps {
   onPagamentoConcluido: () => void;
 }
 
-type PaymentStep = 'selection' | 'pix' | 'card' | 'cash';
+type PaymentStep = 'selection' | 'pix' | 'cash' | 'cash-confirmation';
 
 export const PagamentoRestanteModal: React.FC<PagamentoRestanteModalProps> = ({
   open,
@@ -43,6 +44,7 @@ export const PagamentoRestanteModal: React.FC<PagamentoRestanteModalProps> = ({
   valorTotal,
   valorPago,
   valorRestante,
+  usuarioId,
   clienteData,
   onPagamentoConcluido
 }) => {
@@ -58,22 +60,30 @@ export const PagamentoRestanteModal: React.FC<PagamentoRestanteModalProps> = ({
   const finalizarPagamento = async (formaPagamento: string, paymentId?: string) => {
     setLoading(true);
     try {
-      // Atualizar pagamento_parcial
-      await updateDoc(doc(db, 'pagamentos_parciais', pagamentoParcialId), {
-        status_restante: 'pago',
+      // Buscar dados do agendamento
+      const agendamentoRef = doc(db, 'fila', agendamentoId);
+      const agendamentoDoc = await getDoc(agendamentoRef);
+      
+      if (!agendamentoDoc.exists()) {
+        throw new Error('Agendamento não encontrado');
+      }
+
+      const now = new Date();
+
+      // ✅ Atualizar na fila marcando pagamento como pago, mas mantendo em atendimento
+      await updateDoc(agendamentoRef, {
+        pagamento_parcial: 'pago',
+        status_restante: 'concluído',
         forma_pagamento_restante: formaPagamento,
-        data_pagamento_restante: new Date(),
+        data_pagamento_restante: now,
         payment_id_restante: paymentId || null
       });
 
-      // Atualizar agendamento
-      await updateDoc(doc(db, 'fila', agendamentoId), {
-        pagamento_completo: true
-      });
+      console.log('✅ Pagamento parcial concluído. Agendamento mantido em atendimento.');
 
       toast({
-        title: "Pagamento finalizado! ✅",
-        description: "O pagamento restante foi processado com sucesso."
+        title: "Pagamento recebido! ✅",
+        description: "O pagamento foi confirmado. Finalize o atendimento quando estiver pronto."
       });
 
       onPagamentoConcluido();
@@ -90,12 +100,14 @@ export const PagamentoRestanteModal: React.FC<PagamentoRestanteModalProps> = ({
     }
   };
 
-  const handlePixSuccess = (paymentId: string) => {
-    finalizarPagamento('PIX', paymentId);
+  const handlePixComplete = async () => {
+    // PixPayment já finaliza o pagamento, só precisamos fechar
+    handleClose();
+    onPagamentoConcluido();
   };
 
-  const handleCardSuccess = (paymentId: string) => {
-    finalizarPagamento('Cartão de Crédito', paymentId);
+  const handleCashConfirmation = () => {
+    setStep('cash-confirmation');
   };
 
   const handleCashPayment = () => {
@@ -152,21 +164,7 @@ export const PagamentoRestanteModal: React.FC<PagamentoRestanteModalProps> = ({
             <Button
               variant="outline"
               className="w-full justify-start h-auto py-4"
-              onClick={() => setStep('card')}
-            >
-              <CreditCard className="mr-3 h-5 w-5" />
-              <div className="text-left">
-                <div className="font-medium">Cartão de Crédito</div>
-                <div className="text-xs text-muted-foreground">
-                  Parcele em até 12x
-                </div>
-              </div>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="w-full justify-start h-auto py-4"
-              onClick={() => setStep('cash')}
+              onClick={handleCashConfirmation}
             >
               <Banknote className="mr-3 h-5 w-5" />
               <div className="text-left">
@@ -181,80 +179,84 @@ export const PagamentoRestanteModal: React.FC<PagamentoRestanteModalProps> = ({
 
         {/* PIX Payment */}
         {step === 'pix' && (
-          <div className="space-y-4">
-            <Button variant="ghost" onClick={() => setStep('selection')}>
-              ← Voltar
-            </Button>
-            <div className="text-center space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Implementação de PIX para pagamento restante em desenvolvimento.
-                Por favor, escolha outra forma de pagamento.
-              </p>
-              <Button onClick={() => setStep('selection')}>
-                Escolher outro método
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Card Payment */}
-        {step === 'card' && (
-          <div className="space-y-4">
-            <Button variant="ghost" onClick={() => setStep('selection')}>
-              ← Voltar
-            </Button>
-            <CardPaymentForm
-              amount={valorRestante}
-              description={`Pagamento restante - Agendamento`}
-              onSuccess={handleCardSuccess}
-              onError={(error) => {
-                toast({
-                  title: "Erro no pagamento",
-                  description: error,
-                  variant: "destructive"
-                });
+          <div className="-mx-6 -mb-6">
+            <PixPayment
+              bookingData={{
+                service: `Pagamento Restante - ${clienteData.nome}`,
+                serviceId: agendamentoId,
+                date: new Date().toISOString(),
+                time: new Date().toTimeString(),
+                amount: valorRestante,
+                sala_atendimento: '',
+                selectedService: {
+                  nome: `Pagamento Restante`,
+                  preco: valorRestante,
+                  duracao: 0,
+                  usuario_id: usuarioId
+                },
+                selectedTime: new Date().toTimeString(),
+                pagamento_parcial: false
               }}
-              cardType="credit_card"
-              clientData={clienteData}
+              onBack={() => setStep('selection')}
+              onPaymentComplete={handlePixComplete}
+              redirectTo="profile"
             />
           </div>
         )}
 
-        {/* Cash Confirmation */}
-        {step === 'cash' && (
+        {/* Cash Confirmation Modal */}
+        {step === 'cash-confirmation' && (
           <div className="space-y-4">
             <Button variant="ghost" onClick={() => setStep('selection')}>
               ← Voltar
             </Button>
-            <Card className="border-green-200 bg-green-50/50">
+            <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">
-                  <Check className="h-5 w-5 text-green-600 mt-0.5" />
+                  <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
                   <div className="space-y-2 flex-1">
-                    <p className="font-medium">Confirmar pagamento em dinheiro?</p>
-                    <p className="text-sm text-muted-foreground">
-                      O barbeiro deve confirmar o recebimento do valor restante de{' '}
-                      <span className="font-bold">R$ {valorRestante.toFixed(2)}</span> em dinheiro físico.
+                    <p className="font-medium text-amber-900 dark:text-amber-100">
+                      Confirmar recebimento do dinheiro?
+                    </p>
+                    <p className="text-sm text-amber-800 dark:text-amber-200">
+                      Você está prestes a confirmar que recebeu o valor de{' '}
+                      <span className="font-bold">R$ {valorRestante.toFixed(2)}</span>{' '}
+                      em dinheiro físico do cliente <span className="font-bold">{clienteData.nome}</span>.
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+                      ⚠️ Esta ação não pode ser desfeita. Confirme apenas se o dinheiro foi realmente recebido.
                     </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Button 
-              className="w-full" 
-              onClick={handleCashPayment}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Finalizando...
-                </>
-              ) : (
-                'Confirmar Pagamento em Dinheiro'
-              )}
-            </Button>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline"
+                className="flex-1" 
+                onClick={() => setStep('selection')}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                className="flex-1" 
+                onClick={handleCashPayment}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Confirmar Recebimento
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         )}
       </DialogContent>

@@ -36,12 +36,12 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1. Buscar todos os usuários com role 'admin'
+    // 1. Buscar todos os usuários com role 'dono'
     console.log('🔍 Buscando administradores...');
     const { data: adminRoles, error: rolesError } = await supabase
       .from('user_roles')
       .select('user_id')
-      .eq('role', 'admin');
+      .eq('role', 'dono');
 
     if (rolesError) {
       console.error('❌ Erro ao buscar admins:', rolesError);

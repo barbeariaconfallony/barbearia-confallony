@@ -11,7 +11,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^7.4.4",
     "@capacitor/app": "^7.1.0",
+    "@capacitor/cli": "^7.4.4",
     "@capacitor/core": "^7.4.3",
     "@capacitor/local-notifications": "^7.0.3",
     "@capacitor/push-notifications": "^7.0.3",
@@ -44,7 +46,7 @@
     "@radix-ui/react-toggle": "^1.1.9",
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
-    "@supabase/supabase-js": "^2.75.0",
+    "@supabase/supabase-js": "^2.77.0",
     "@tanstack/react-query": "^5.83.0",
     "@types/chart.js": "^2.9.41",
     "chart.js": "^4.5.0",
@@ -62,6 +64,7 @@
     "next": "^15.5.0",
     "next-themes": "^0.3.0",
     "npm": "^11.5.2",
+    "onesignal-cordova-plugin": "^5.2.15",
     "pnpm": "^10.14.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",

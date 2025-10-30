@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { QueueItemActionsModal } from "@/components/QueueItemActionsModal";
 import { UltimosAgendamentos } from "@/components/UltimosAgendamentos";
 import { NotificarClienteModal } from "@/components/NotificarClienteModal";
+import { PagamentosPendentesButton } from "@/components/PagamentosPendentesButton";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, Users, CheckCircle, AlertCircle, User, Scissors, ChevronRight, Calendar, TrendingUp, Star, Check, Timer, UserCheck, Play, Pause, CreditCard, Banknote, Palette, Sparkles, Zap, Heart, Ruler, Copy, MessageSquare } from "lucide-react";
@@ -1193,6 +1194,9 @@ const Queue = () => {
           clienteTelefone={clienteParaNotificar?.usuario_telefone}
           horarioAgendado={clienteParaNotificar?.tempo_inicio}
         />
+
+        {/* Botão de pagamentos pendentes */}
+        <PagamentosPendentesButton />
       </Layout>;
 };
 export default Queue;

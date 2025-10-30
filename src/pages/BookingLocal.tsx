@@ -844,13 +844,6 @@ const Index = () => {
                           <span>PIX</span>
                         </div>
                       </Label>
-                      <Label htmlFor="cartao" className="cursor-pointer">
-                        <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
-                          <RadioGroupItem value="Cartão de Crédito" id="cartao" />
-                          <CreditCard className="h-5 w-5 text-primary" />
-                          <span>Cartão de Crédito</span>
-                        </div>
-                      </Label>
                       <Label htmlFor="dinheiro" className="cursor-pointer">
                         <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
                           <RadioGroupItem value="Dinheiro Físico" id="dinheiro" />

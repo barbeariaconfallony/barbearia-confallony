@@ -1,15 +1,29 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Bell, BellOff } from 'lucide-react';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useOneSignalNative } from '@/hooks/useOneSignalNative';
 import { useAuth } from '@/contexts/AuthContext';
 
 export const NotificationPermissionButton: React.FC = () => {
   const { currentUser } = useAuth();
-  const { permission, isSupported, requestPermission, fcmToken } = useNotifications(currentUser?.uid);
+  const { permission, isSupported, isInitialized, requestPermission } = useOneSignalNative(currentUser?.uid);
 
   if (!isSupported) {
-    return null;
+    return (
+      <Button variant="outline" size="sm" disabled className="flex items-center gap-2">
+        <BellOff className="h-4 w-4" />
+        Notificações não suportadas
+      </Button>
+    );
+  }
+
+  if (!isInitialized) {
+    return (
+      <Button variant="outline" size="sm" disabled className="flex items-center gap-2">
+        <Bell className="h-4 w-4 animate-pulse" />
+        Inicializando...
+      </Button>
+    );
   }
 
   const handleRequestPermission = async () => {

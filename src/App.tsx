@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { QueueAutomationProvider } from "./contexts/QueueAutomationContext";
 import { useTheme } from "./hooks/useTheme";
-import { useAutoRequestNotifications } from "./hooks/useAutoRequestNotifications";
+import { useAutoRequestOneSignal } from "./hooks/useAutoRequestOneSignal";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import AdminRoute from "./components/auth/AdminRoute";
 import ScrollToTop from "./components/ScrollToTop";
@@ -35,7 +35,7 @@ const queryClient = new QueryClient();
 
 const AppContent = () => {
   useTheme(); // Carrega e aplica o tema globalmente
-  useAutoRequestNotifications(); // Solicita permissão para notificações automaticamente
+  useAutoRequestOneSignal(); // Solicita permissão para notificações OneSignal automaticamente
 
   return (
     <>

@@ -7,11 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Copy, QrCode, CheckCircle, Clock, XCircle, ArrowLeft, User, Mail, CreditCard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
+import { format, parse } from 'date-fns';
 import type { BookingData } from './ServiceBooking';
 import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse, PaymentStatusResponse } from '@/types/mercadopago';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ClientDropdownSelector } from './ClientDropdownSelector';
 interface PixPaymentProps {
@@ -20,6 +21,10 @@ interface PixPaymentProps {
     selectedEmployee?: any;
     selectedDate?: Date;
     selectedTime?: string;
+    pagamento_parcial?: boolean;
+    valor_parcial_restante?: number;
+    valor_total?: number;
+    valor_pago?: number;
   };
   onBack: () => void;
   onPaymentComplete?: () => Promise<void>;
@@ -97,6 +102,59 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
 
   // Carregar dados salvos do localStorage ou do usuário autenticado
   useEffect(() => {
+    console.log('PixPayment - bookingData:', bookingData);
+    console.log('PixPayment - selectedService:', bookingData.selectedService);
+    
+    // Se for pagamento restante, buscar dados do cliente da coleção usuarios
+    const isPaymentRestante = bookingData.service?.includes('Pagamento Restante');
+    console.log('PixPayment - isPaymentRestante:', isPaymentRestante);
+    
+    if (isPaymentRestante && bookingData.selectedService?.usuario_id) {
+      console.log('PixPayment - Buscando dados do usuário:', bookingData.selectedService.usuario_id);
+      
+      const fetchUserData = async () => {
+        try {
+          const userDoc = await getDoc(doc(db, 'usuarios', bookingData.selectedService.usuario_id));
+          console.log('PixPayment - userDoc exists:', userDoc.exists());
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            console.log('PixPayment - userData:', userData);
+            
+            const [firstName, ...lastNameParts] = (userData.nome || '').split(' ');
+            const lastName = lastNameParts.join(' ');
+            
+            const newUserData = {
+              firstName: firstName || '',
+              lastName: lastName || '',
+              email: userData.email || '',
+              cpf: userData.cpf || ''
+            };
+            
+            console.log('PixPayment - Setting userData:', newUserData);
+            setUserData(newUserData);
+            setShowUserForm(false);
+          } else {
+            console.error('Usuário não encontrado na coleção usuarios');
+            toast({
+              title: "Erro",
+              description: "Dados do cliente não encontrados.",
+              variant: "destructive"
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao buscar dados do usuário:', error);
+          toast({
+            title: "Erro",
+            description: "Erro ao carregar dados do cliente.",
+            variant: "destructive"
+          });
+        }
+      };
+      fetchUserData();
+      return;
+    }
+
     // Se for do mobile, usar dados do usuário autenticado
     if (isFromMobile && authUserData) {
       const [firstName, ...lastNameParts] = authUserData.nome.split(' ');
@@ -129,7 +187,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     if (savedPaymentId) {
       setCurrentPaymentId(savedPaymentId);
     }
-  }, [isFromMobile, authUserData]);
+  }, [isFromMobile, authUserData, bookingData]);
 
   // Salvar dados do usuário no localStorage
   const saveUserDataToStorage = (data: UserData) => {
@@ -286,6 +344,51 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
   // Função para salvar agendamento no Firestore quando pagamento aprovado
   const saveAppointmentToFirestore = async (paymentId: string) => {
     try {
+      // Verificar se é um pagamento restante (agendamento já existe)
+      const isPaymentRestante = bookingData.service?.includes('Pagamento Restante');
+      
+      if (isPaymentRestante && bookingData.serviceId) {
+        // É pagamento restante - finalizar o agendamento existente
+        console.log('Pagamento restante detectado, finalizando agendamento:', bookingData.serviceId);
+        
+        const agendamentoRef = doc(db, 'fila', bookingData.serviceId);
+        const agendamentoDoc = await getDoc(agendamentoRef);
+        
+        if (!agendamentoDoc.exists()) {
+          throw new Error('Agendamento não encontrado');
+        }
+
+        const agendamentoData = agendamentoDoc.data();
+        const now = new Date();
+
+        // Criar documento em agendamentos_finalizados
+        const completedAppointment = {
+          ...agendamentoData,
+          status: 'concluido',
+          tempo_fim: agendamentoData.tempo_fim || now,
+          data_conclusao: now,
+          pagamento_parcial: 'pago',
+          forma_pagamento_restante: 'PIX',
+          payment_id_restante: paymentId,
+          valor_total: agendamentoData.valor_total || agendamentoData.preco || 0,
+          valor_pago_inicial: (agendamentoData.valor_total || agendamentoData.preco || 0) / 3,
+          valor_pago_restante: bookingData.amount,
+        };
+
+        await addDoc(collection(db, 'agendamentos_finalizados'), completedAppointment);
+
+        // Remover da fila
+        await deleteDoc(agendamentoRef);
+
+        toast({
+          title: "Pagamento concluído!",
+          description: "O atendimento foi finalizado com sucesso."
+        });
+        
+        return true;
+      }
+
+      // Fluxo normal de novo agendamento
       let appointmentDate: Date;
 
       // Se temos dados específicos do agendamento, usar eles
@@ -310,6 +413,11 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
       const tempoFim = new Date(appointmentDate);
       const duracao = bookingData.selectedService?.duracao || 30;
       tempoFim.setMinutes(tempoFim.getMinutes() + duracao);
+      const isPartial = !!(bookingData.pagamento_parcial ?? (bookingData.selectedService?.preco && bookingData.amount < bookingData.selectedService.preco));
+      const valorTotal = Number(bookingData.valor_total ?? bookingData.selectedService?.preco ?? bookingData.amount);
+      const valorPago = Number(bookingData.valor_pago ?? bookingData.amount);
+      const valorRestante = isPartial ? Math.max(0, valorTotal - valorPago) : 0;
+
       const newAppointment = {
         usuario_id: currentUser?.uid || 'pix_customer',
         usuario_nome: userName,
@@ -320,7 +428,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         sala_atendimento: bookingData.sala_atendimento || bookingData.selectedService?.sala_atendimento || '',
         funcionario_id: bookingData.selectedEmployee?.id || '',
         funcionario_nome: bookingData.selectedEmployee?.nome || '',
-        preco: bookingData.amount,
+        preco: valorTotal,
         data: appointmentDate,
         tempo_inicio: tempoInicio,
         tempo_fim: tempoFim,
@@ -331,7 +439,13 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         presente: true,
         timestamp: new Date().getTime(),
         payment_id: paymentId,
-        payer_cpf: userData.cpf.replace(/\D/g, '')
+        payer_cpf: userData.cpf.replace(/\D/g, ''),
+        pagamento_parcial: isPartial,
+        valor_parcial_restante: valorRestante,
+        valor_restante: valorRestante,
+        valor_total: valorTotal,
+        valor_pago: valorPago,
+        status_restante: isPartial ? 'pendente' : 'quitado',
       };
       const docRef = await addDoc(collection(db, 'fila'), newAppointment);
       console.log('Agendamento salvo no Firestore:', newAppointment);
@@ -617,8 +731,8 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         </CardHeader>
         
         <CardContent className="space-y-4">
-          {/* Mostrar seleção de cliente apenas no booking-local */}
-          {!isFromMobile && (
+          {/* Mostrar seleção de cliente apenas no booking-local e se não for pagamento restante */}
+          {!isFromMobile && !bookingData.service?.includes('Pagamento Restante') && (
             <>
               <div className="space-y-4">
                 <div className="border rounded-lg p-4">
@@ -696,30 +810,51 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
       </Card>;
   }
   if (paymentStatus === 'approved') {
-    return <Card className="w-full max-w-2xl mx-auto shadow-card bg-gradient-card">
-        <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-          <CheckCircle className="w-16 h-16 text-primary mb-4" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">Pagamento Aprovado!</h2>
-          <p className="text-muted-foreground mb-6">Seu agendamento foi confirmado com sucesso.</p>
+    return <Card className="w-full max-w-2xl mx-auto shadow-lg border-primary/20">
+        <CardContent className="flex flex-col items-center justify-center py-12 text-center px-6">
+          <div className="mb-6 relative">
+            <div className="absolute inset-0 animate-ping">
+              <CheckCircle className="w-20 h-20 text-primary/30" />
+            </div>
+            <CheckCircle className="w-20 h-20 text-primary relative" />
+          </div>
           
-          <div className="bg-accent/50 rounded-lg p-4 w-full max-w-md mb-6">
-            <h3 className="font-semibold text-foreground mb-2">Detalhes do Agendamento</h3>
-            <div className="text-sm text-muted-foreground space-y-1">
-              <p><strong>Serviço:</strong> {bookingData.service}</p>
-              <p><strong>Data:</strong> {bookingData.date}</p>
-              <p><strong>Horário:</strong> {bookingData.time}</p>
-              <p><strong>Cliente:</strong> {userData.firstName} {userData.lastName}</p>
-              <p><strong>CPF:</strong> {userData.cpf}</p>
-              <p className="text-primary font-bold">
-                <strong>Valor pago:</strong> R$ {bookingData.amount.toFixed(2).replace('.', ',')}
-              </p>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent mb-3">
+            Pagamento Aprovado!
+          </h2>
+          <p className="text-lg text-muted-foreground mb-8">
+            Seu agendamento foi confirmado com sucesso
+          </p>
+          
+          <div className="w-full max-w-md space-y-4">
+            <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-xl p-6 border border-primary/20">
+              <h3 className="font-semibold text-lg mb-4 text-foreground">Detalhes do Agendamento</h3>
+              <div className="space-y-3 text-left">
+                <div className="flex justify-between items-center py-2 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground">Serviço</span>
+                  <span className="font-medium">{bookingData.service}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground">Data</span>
+                  <span className="font-medium">{bookingData.date}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground">Horário</span>
+                  <span className="font-medium">{bookingData.time}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground">Cliente</span>
+                  <span className="font-medium">{userData.firstName} {userData.lastName}</span>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <span className="text-sm text-muted-foreground">Valor Pago</span>
+                  <span className="font-bold text-primary text-lg">
+                    R$ {bookingData.amount.toFixed(2).replace('.', ',')}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-
-          <Button onClick={onBack} variant="outline">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Novo Agendamento
-          </Button>
         </CardContent>
       </Card>;
   }
@@ -751,8 +886,27 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
           <h3 className="font-semibold text-foreground mb-2">Resumo do Pedido</h3>
           <div className="text-sm text-muted-foreground space-y-1">
             <p><strong>Serviço:</strong> {bookingData.service}</p>
-            <p><strong>Data:</strong> {bookingData.date}</p>
-            <p><strong>Horário:</strong> {bookingData.time}</p>
+            <p><strong>Data:</strong> {(() => {
+              try {
+                const date = new Date(bookingData.date);
+                return format(date, 'dd/MM/yyyy');
+              } catch {
+                return bookingData.date;
+              }
+            })()}</p>
+            <p><strong>Horário:</strong> {(() => {
+              try {
+                // Se já estiver no formato HH:mm, usar diretamente
+                if (bookingData.time && /^\d{2}:\d{2}/.test(bookingData.time)) {
+                  return bookingData.time.slice(0, 5);
+                }
+                // Caso contrário, tentar parsear
+                const time = new Date(bookingData.time);
+                return format(time, 'HH:mm');
+              } catch {
+                return bookingData.time;
+              }
+            })()}</p>
             <p><strong>Cliente:</strong> {userData.firstName} {userData.lastName}</p>
             <p><strong>CPF:</strong> {userData.cpf}</p>
             <p className="text-lg font-bold text-primary">

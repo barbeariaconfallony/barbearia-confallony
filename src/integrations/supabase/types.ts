@@ -151,14 +151,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      clean_old_payment_queue: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      clean_old_rate_limits: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      clean_old_payment_queue: { Args: never; Returns: undefined }
+      clean_old_rate_limits: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

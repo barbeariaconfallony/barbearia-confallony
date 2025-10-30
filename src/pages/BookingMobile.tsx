@@ -60,6 +60,10 @@ interface Appointment {
   duracao: number;
   presente: boolean;
   timestamp: number;
+  pagamento_parcial?: boolean;
+  valor_restante?: number;
+  valor_total?: number;
+  valor_pago?: number;
 }
 
 interface ClienteData {
@@ -78,7 +82,7 @@ const BookingMobile = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [selectedTime, setSelectedTime] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("pix");
+  const [paymentMethod, setPaymentMethod] = useState("PIX");
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
@@ -377,11 +381,16 @@ const BookingMobile = () => {
 
     // Se for PIX, preparar dados e mostrar tela de pagamento
     if (paymentMethod === "PIX") {
+      const valorRestante = selectedService.preco - valorFinal;
       const pixData: BookingData & {
         selectedService: any;
         selectedEmployee: any;
         selectedDate: Date;
         selectedTime: string;
+        pagamento_parcial?: boolean;
+        valor_parcial_restante?: number;
+        valor_total?: number;
+        valor_pago?: number;
       } = {
         service: selectedService.nome,
         serviceId: selectedService.id,
@@ -392,7 +401,11 @@ const BookingMobile = () => {
         selectedService,
         selectedEmployee,
         selectedDate,
-        selectedTime
+        selectedTime,
+        pagamento_parcial: pagarApenasUmTerco,
+        valor_parcial_restante: pagarApenasUmTerco ? valorRestante : 0,
+        valor_total: selectedService.preco,
+        valor_pago: valorFinal,
       };
       
       setPixBookingData(pixData);
@@ -477,12 +490,25 @@ const BookingMobile = () => {
 
       // Adicionar campos de pagamento parcial se aplicável
       if (pagarApenasUmTerco) {
-        newAppointment.tipo_pagamento = 'parcial';
+        console.log('Pagamento parcial detectado:', {
+          pagarApenasUmTerco,
+          valorTotal,
+          valorPago,
+          valorRestante
+        });
+        newAppointment.pagamento_parcial = true;
         newAppointment.valor_total = valorTotal;
         newAppointment.valor_pago = valorPago;
+        newAppointment.valor_parcial_restante = valorRestante;
         newAppointment.valor_restante = valorRestante;
         newAppointment.status_restante = 'pendente';
+      } else {
+        newAppointment.pagamento_parcial = false;
+        newAppointment.valor_parcial_restante = 0;
+        newAppointment.valor_restante = 0;
       }
+
+      console.log('Agendamento a ser salvo:', newAppointment);
 
       // Adicionar payment_id do Mercado Pago se fornecido
       if (paymentId) {
@@ -540,7 +566,7 @@ const BookingMobile = () => {
     setSelectedEmployee(null);
     setSelectedDate(new Date());
     setSelectedTime("");
-    setPaymentMethod("pix");
+    setPaymentMethod("PIX");
     setSelectedClientData(null);
     setPagarApenasUmTerco(false);
     setShowCardPayment(false);
@@ -889,20 +915,6 @@ const BookingMobile = () => {
                         <RadioGroupItem value="PIX" id="pix" />
                         <Smartphone className="h-5 w-5 text-primary" />
                         <span>PIX</span>
-                      </div>
-                    </Label>
-                    <Label htmlFor="credit_card" className="cursor-pointer">
-                      <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
-                        <RadioGroupItem value="credit_card" id="credit_card" />
-                        <CreditCard className="h-5 w-5 text-primary" />
-                        <span>Cartão de Crédito (Em até 12x)</span>
-                      </div>
-                    </Label>
-                    <Label htmlFor="debit_card" className="cursor-pointer">
-                      <div className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50">
-                        <RadioGroupItem value="debit_card" id="debit_card" />
-                        <CreditCard className="h-5 w-5 text-primary" />
-                        <span>Cartão de Débito</span>
                       </div>
                     </Label>
                   </div>

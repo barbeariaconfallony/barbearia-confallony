@@ -217,12 +217,12 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
           const firstTwoDigits = cleanCardNumber.substring(0, 2);
           const firstSixDigits = cleanCardNumber.substring(0, 6);
           
-          // Regras de detecção de bandeira
+          // Regras de detecção de bandeira (usar apenas ID base, sem prefixo 'deb')
           if (firstDigit === '4') {
-            paymentMethodId = cardType === 'credit_card' ? 'visa' : 'debvisa';
+            paymentMethodId = 'visa'; // Mercado Pago identifica débito/crédito automaticamente
           } else if (['51', '52', '53', '54', '55'].includes(firstTwoDigits) || 
                      (parseInt(firstSixDigits) >= 222100 && parseInt(firstSixDigits) <= 272099)) {
-            paymentMethodId = cardType === 'credit_card' ? 'master' : 'debmaster';
+            paymentMethodId = 'master';
           } else if (
             firstSixDigits.startsWith('4011') ||
             firstSixDigits.startsWith('4312') ||
@@ -242,17 +242,17 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
             firstSixDigits.startsWith('6516') ||
             firstSixDigits.startsWith('6550')
           ) {
-            paymentMethodId = cardType === 'credit_card' ? 'elo' : 'debelo';
+            paymentMethodId = 'elo';
           } else if (['34', '37'].includes(firstTwoDigits)) {
             paymentMethodId = 'amex';
           }
           
-          console.log('Bandeira detectada manualmente:', paymentMethodId);
+          console.log('Bandeira detectada manualmente:', paymentMethodId, '(tipo:', cardType, ')');
         }
       } catch (error) {
         console.error('Erro ao identificar cartão, usando detecção manual:', error);
-        // Fallback para Visa se der erro
-        paymentMethodId = cardType === 'credit_card' ? 'visa' : 'debvisa';
+        // Fallback para Visa se der erro (Mercado Pago identifica débito/crédito automaticamente)
+        paymentMethodId = 'visa';
       }
 
       // Criar card token usando SDK do Mercado Pago
@@ -294,9 +294,12 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
         }
       };
 
-      // Só adicionar issuer_id se foi identificado
-      if (issuerId) {
+      // Adicionar issuer_id se foi identificado E for string válida
+      if (issuerId && typeof issuerId === 'string' && issuerId.trim() !== '') {
         paymentRequest.issuer_id = issuerId;
+        console.log('Incluindo issuer_id na requisição:', issuerId);
+      } else {
+        console.log('Prosseguindo sem issuer_id (será determinado pelo Mercado Pago)');
       }
 
       console.log('Criando pagamento com dados:', {
@@ -311,7 +314,24 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
 
       if (error) {
         console.error('Erro ao criar pagamento:', error);
-        onError(error.message || 'Erro ao processar pagamento');
+        
+        // Verificar se é erro de BIN excluído (cartão de teste em produção)
+        if (error.message && error.message.includes('bin_exclusion')) {
+          toast({
+            title: "⚠️ Cartão não aceito",
+            description: "Este cartão não pode ser usado. Certifique-se de usar um CARTÃO REAL (cartões de teste não funcionam em produção).",
+            variant: "destructive",
+            duration: 10000
+          });
+          onError('Cartão de teste não pode ser usado em produção. Use um cartão real.');
+        } else {
+          toast({
+            title: "Erro ao processar",
+            description: error.message || 'Erro ao processar pagamento. Tente novamente.',
+            variant: "destructive"
+          });
+          onError(error.message || 'Erro ao processar pagamento');
+        }
         return;
       }
 
@@ -326,26 +346,36 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
       } else if (result && result.status === 'rejected') {
         // Mapear códigos de erro para mensagens amigáveis
         const errorMessages: Record<string, string> = {
-          'cc_rejected_high_risk': 'Transação recusada por segurança. Use outro cartão ou forma de pagamento.',
-          'cc_rejected_bad_filled_security_code': 'Código de segurança inválido.',
+          'cc_rejected_high_risk': '⚠️ Transação recusada por segurança. Use um cartão REAL (não de teste) ou tente outra forma de pagamento.',
+          'cc_rejected_bad_filled_security_code': 'Código de segurança (CVV) inválido.',
           'cc_rejected_bad_filled_date': 'Data de validade inválida.',
-          'cc_rejected_bad_filled_other': 'Verifique os dados do cartão.',
-          'cc_rejected_insufficient_amount': 'Saldo insuficiente.',
-          'cc_rejected_call_for_authorize': 'Entre em contato com o banco emissor.',
-          'cc_rejected_card_disabled': 'Cartão desabilitado. Entre em contato com o banco.',
-          'cc_rejected_duplicated_payment': 'Pagamento duplicado.',
-          'cc_rejected_max_attempts': 'Número máximo de tentativas excedido.',
+          'cc_rejected_bad_filled_other': 'Verifique todos os dados do cartão.',
+          'cc_rejected_insufficient_amount': 'Saldo insuficiente no cartão.',
+          'cc_rejected_call_for_authorize': 'Entre em contato com seu banco emissor para autorizar.',
+          'cc_rejected_card_disabled': 'Cartão desabilitado ou bloqueado. Entre em contato com o banco.',
+          'cc_rejected_duplicated_payment': 'Pagamento duplicado detectado.',
+          'cc_rejected_max_attempts': 'Número máximo de tentativas excedido. Aguarde alguns minutos.',
           'cc_rejected_card_error': 'Não foi possível processar o pagamento com este cartão.',
         };
 
-        const errorMsg = errorMessages[result.status_detail] || result.status_detail || 'Pagamento recusado';
+        const errorMsg = errorMessages[result.status_detail] || result.status_detail || 'Pagamento recusado pelo banco';
+        
+        console.error('Pagamento rejeitado:', { status: result.status, status_detail: result.status_detail, payment_id: result.id });
         
         toast({
-          title: "Pagamento recusado",
+          title: "❌ Pagamento Recusado",
           description: errorMsg,
-          variant: "destructive"
+          variant: "destructive",
+          duration: 8000
         });
         onError(errorMsg);
+      } else if (result && result.status === 'pending') {
+        toast({
+          title: "⏳ Pagamento Pendente",
+          description: "Seu pagamento está sendo processado. Você receberá uma notificação em breve.",
+          duration: 6000
+        });
+        onSuccess(result.id.toString());
       } else {
         const errorMsg = 'Status de pagamento inesperado: ' + result?.status;
         toast({
@@ -376,11 +406,19 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
           <CreditCard className="h-5 w-5" />
           {cardType === 'credit_card' ? 'Pagamento com Cartão de Crédito' : 'Pagamento com Cartão de Débito'}
         </CardTitle>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
-          <svg className="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
-          <span>Pagamento 100% seguro através do Mercado Pago</span>
+        <div className="space-y-2 mt-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <svg className="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <span>Pagamento 100% seguro através do Mercado Pago</span>
+          </div>
+          <div className="flex items-start gap-2 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 p-2 rounded-md">
+            <svg className="h-4 w-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>⚠️ Use apenas cartões REAIS. Cartões de teste não funcionam em produção.</span>
+          </div>
         </div>
       </CardHeader>
       <CardContent>

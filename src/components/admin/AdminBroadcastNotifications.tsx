@@ -4,10 +4,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Bell, Send, Loader2 } from 'lucide-react';
+import { Bell, Send, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export const AdminBroadcastNotifications = () => {
   const { userData } = useAuth();
@@ -29,27 +31,46 @@ export const AdminBroadcastNotifications = () => {
     setIsSending(true);
 
     try {
-      console.log('📤 Enviando broadcast:', { title, message });
+      console.log('📤 Enviando broadcast para todos os usuários:', { title, message });
 
-      const { data, error } = await supabase.functions.invoke('send-broadcast-notification', {
+      // Buscar todos os usuários do Firebase (não admins)
+      const usersQuery = query(
+        collection(db, 'usuarios'),
+        where('isAdmin', '==', false)
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      const userIds = usersSnapshot.docs.map(doc => doc.id);
+      
+      if (userIds.length === 0) {
+        toast.error('Nenhum usuário encontrado para enviar notificação');
+        setIsSending(false);
+        return;
+      }
+
+      console.log(`📤 Enviando notificação para ${userIds.length} usuário(s)`);
+
+      // Enviar via OneSignal
+      const { data, error } = await supabase.functions.invoke('send-onesignal-notification', {
         body: {
-          title,
-          body: message,
-          adminUserId: userData.uid
+          userIds: userIds,
+          title: title,
+          message: message,
+          data: { type: 'broadcast', adminId: userData.uid }
         }
       });
 
       if (error) {
-        console.error('❌ Erro ao enviar broadcast:', error);
+        console.error('❌ Erro ao enviar notificação:', error);
         toast.error('Erro ao enviar notificação');
         return;
       }
 
-      console.log('✅ Broadcast enviado:', data);
+      console.log('✅ Notificação enviada:', data);
       
       toast.success(
-        `Notificação enviada!`,
-        { description: `${data.sent} usuário(s) notificado(s)` }
+        'Notificação enviada com sucesso!',
+        { description: `${data.recipients || userIds.length} usuário(s) devem receber a notificação` }
       );
 
       // Limpar campos
@@ -107,24 +128,26 @@ export const AdminBroadcastNotifications = () => {
             </p>
           </div>
 
-          <Button
-            onClick={handleSendBroadcast}
-            disabled={!title.trim() || !message.trim() || isSending}
-            className="w-full"
-            size="lg"
-          >
-            {isSending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Enviando...
-              </>
-            ) : (
-              <>
-                <Send className="mr-2 h-4 w-4" />
-                Enviar para Todos os Clientes
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSendBroadcast}
+              disabled={!title.trim() || !message.trim() || isSending}
+              className="flex-1"
+              size="lg"
+            >
+              {isSending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Users className="mr-2 h-4 w-4" />
+                  Enviar para Todos os Clientes
+                </>
+              )}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

@@ -2,10 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, Clock, User, AlertCircle } from 'lucide-react';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Card } from '@/components/ui/card';
+import { Calendar, Clock, User, AlertCircle, CalendarIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { format, isSameDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ReagendamentoModalProps {
   isOpen: boolean;
@@ -37,10 +43,15 @@ interface Funcionario {
   ativo: boolean;
 }
 
-const timeSlots = [
-  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00'
-];
+interface TimeSlot {
+  time: string;
+  available: boolean;
+}
+
+interface ConfigAgendamento {
+  dias_semana: number[];
+  horarios_disponiveis: string[];
+}
 
 
 export const ReagendamentoModal: React.FC<ReagendamentoModalProps> = ({
@@ -49,20 +60,63 @@ export const ReagendamentoModal: React.FC<ReagendamentoModalProps> = ({
   agendamento,
   onUpdate
 }) => {
-  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedFuncionario, setSelectedFuncionario] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
-  const [conflictedSlots, setConflictedSlots] = useState<string[]>([]);
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [existingAppointments, setExistingAppointments] = useState<any[]>([]);
+  const [configAgendamento, setConfigAgendamento] = useState<ConfigAgendamento>({
+    dias_semana: [1, 2, 3, 4, 5, 6],
+    horarios_disponiveis: []
+  });
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [selectedDayFullyBooked, setSelectedDayFullyBooked] = useState(false);
   const { toast } = useToast();
 
   // Carrega dados das coleções
   const loadData = async () => {
     setLoadingData(true);
     try {
+      // Carrega configuração de agendamento
+      const configSnapshot = await getDocs(collection(db, 'config_agendamento'));
+      if (!configSnapshot.empty) {
+        const config = configSnapshot.docs[0].data();
+        setConfigAgendamento({
+          dias_semana: config.dias_semana || [1, 2, 3, 4, 5, 6],
+          horarios_disponiveis: config.horarios_disponiveis || []
+        });
+      } else {
+        const horariosDefault: string[] = [];
+        for (let hour = 8; hour <= 19; hour++) {
+          for (let minute = 0; minute < 60; minute += 30) {
+            horariosDefault.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
+          }
+        }
+        setConfigAgendamento({
+          dias_semana: [1, 2, 3, 4, 5, 6],
+          horarios_disponiveis: horariosDefault
+        });
+      }
+
+      // Carrega agendamentos existentes
+      const appointmentsSnapshot = await getDocs(collection(db, 'fila'));
+      const appointments: any[] = [];
+      appointmentsSnapshot.forEach((doc) => {
+        const data = doc.data();
+        appointments.push({
+          id: doc.id,
+          data: data.data.toDate(),
+          tempo_inicio: data.tempo_inicio?.toDate() || data.data.toDate(),
+          tempo_fim: data.tempo_fim?.toDate(),
+          status: data.status
+        });
+      });
+      setExistingAppointments(appointments);
+
       // Carrega serviços
       const servicosQuery = query(
         collection(db, 'servicos'),
@@ -102,22 +156,9 @@ export const ReagendamentoModal: React.FC<ReagendamentoModalProps> = ({
       console.error('Erro ao carregar dados:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar os dados. Usando dados padrão.",
+        description: "Não foi possível carregar os dados.",
         variant: "destructive"
       });
-      // Fallback para dados padrão
-      setServicos([
-        { id: '1', nome: 'Corte Clássico', preco: 30, duracao: 30, ativo: true },
-        { id: '2', nome: 'Corte Moderno', preco: 35, duracao: 40, ativo: true },
-        { id: '3', nome: 'Barba', preco: 20, duracao: 20, ativo: true },
-        { id: '4', nome: 'Corte + Barba', preco: 45, duracao: 50, ativo: true }
-      ]);
-      setFuncionarios([
-        { id: '1', nome: 'João Silva', ativo: true },
-        { id: '2', nome: 'Pedro Santos', ativo: true },
-        { id: '3', nome: 'Carlos Oliveira', ativo: true },
-        { id: '4', nome: 'Rafael Costa', ativo: true }
-      ]);
     }
     setLoadingData(false);
   };
@@ -131,8 +172,7 @@ export const ReagendamentoModal: React.FC<ReagendamentoModalProps> = ({
   useEffect(() => {
     if (agendamento && isOpen && !loadingData && funcionarios.length > 0) {
       // Define a data
-      const dateStr = agendamento.data.toISOString().split('T')[0];
-      setSelectedDate(dateStr);
+      setSelectedDate(agendamento.data);
       
       // Define o horário
       if (agendamento.tempo_inicio) {
@@ -146,51 +186,77 @@ export const ReagendamentoModal: React.FC<ReagendamentoModalProps> = ({
     }
   }, [agendamento, isOpen, loadingData, funcionarios]);
 
-  const checkTimeConflicts = async (date: string) => {
-    if (!date) return;
-    
-    try {
-      const startDate = new Date(date + 'T00:00:00');
-      const endDate = new Date(date + 'T23:59:59');
-      
-      const q = query(
-        collection(db, 'fila'),
-        where('data', '>=', startDate),
-        where('data', '<=', endDate),
-        where('status', 'in', ['aguardando_confirmacao', 'confirmado'])
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const conflicts: string[] = [];
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        // Ignora o próprio agendamento que está sendo reagendado
-        if (doc.id === agendamento.id) return;
-        
-        if (data.tempo_inicio) {
-          const timeStr = data.tempo_inicio.toDate().toTimeString().slice(0, 5);
-          conflicts.push(timeStr);
-        }
-      });
-      
-      setConflictedSlots(conflicts);
-    } catch (error) {
-      console.error('Erro ao verificar conflitos:', error);
+  const generateTimeSlots = () => {
+    if (!selectedDate) {
+      setTimeSlots([]);
+      return;
     }
+
+    const slots: TimeSlot[] = [];
+    const horariosConfig = configAgendamento.horarios_disponiveis;
+    
+    if (horariosConfig.length === 0) {
+      setTimeSlots([]);
+      return;
+    }
+    
+    const dateAppointments = existingAppointments.filter(app => 
+      isSameDay(app.data, selectedDate) && 
+      app.id !== agendamento.id &&
+      (app.status === 'aguardando_confirmacao' || app.status === 'confirmado')
+    );
+
+    horariosConfig.forEach(time => {
+      const bookedTimes = dateAppointments.map(app => format(app.tempo_inicio, 'HH:mm'));
+      const available = !bookedTimes.includes(time);
+      slots.push({ time, available });
+    });
+    
+    setTimeSlots(slots);
   };
 
   useEffect(() => {
-    if (selectedDate) {
-      checkTimeConflicts(selectedDate);
+    if (selectedDate && configAgendamento.horarios_disponiveis.length > 0) {
+      generateTimeSlots();
     }
-  }, [selectedDate]);
+  }, [selectedDate, existingAppointments, configAgendamento]);
 
-  const getTomorrowDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+  const isDayDisabled = (date: Date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date < today) return true;
+
+    const dayOfWeek = date.getDay();
+    if (!configAgendamento.dias_semana.includes(dayOfWeek)) return true;
+
+    return false;
   };
+
+  const isDayFullyBooked = (date: Date) => {
+    const dateAppointments = existingAppointments.filter(app => 
+      isSameDay(app.data, date) &&
+      app.id !== agendamento.id &&
+      (app.status === 'aguardando_confirmacao' || app.status === 'confirmado')
+    );
+
+    if (configAgendamento.horarios_disponiveis.length === 0) return false;
+
+    const bookedTimes = dateAppointments.map(app => format(app.tempo_inicio, 'HH:mm'));
+    return configAgendamento.horarios_disponiveis.every(time => 
+      bookedTimes.includes(time)
+    );
+  };
+
+  const isDayPartiallyBooked = (date: Date) => {
+    const dateAppointments = existingAppointments.filter(app => 
+      isSameDay(app.data, date) &&
+      app.id !== agendamento.id &&
+      (app.status === 'aguardando_confirmacao' || app.status === 'confirmado')
+    );
+
+    return dateAppointments.length > 0 && !isDayFullyBooked(date);
+  };
+
 
   const handleSave = async () => {
     if (!selectedDate || !selectedTime || !selectedFuncionario) {
@@ -202,7 +268,8 @@ export const ReagendamentoModal: React.FC<ReagendamentoModalProps> = ({
       return;
     }
 
-    if (conflictedSlots.includes(selectedTime)) {
+    const selectedSlot = timeSlots.find(slot => slot.time === selectedTime);
+    if (!selectedSlot?.available) {
       toast({
         title: "Horário indisponível",
         description: "Este horário já está ocupado. Selecione outro horário.",
@@ -292,40 +359,106 @@ export const ReagendamentoModal: React.FC<ReagendamentoModalProps> = ({
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Data</label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                min={getTomorrowDate()}
-                className="w-full px-3 py-2 border border-border rounded-md bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              />
+              <Button
+                variant="outline"
+                onClick={() => setShowCalendar(!showCalendar)}
+                className={cn(
+                  "w-full justify-between text-left font-normal",
+                  !selectedDate && "text-muted-foreground"
+                )}
+              >
+                <div className="flex items-center">
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {selectedDate ? format(selectedDate, "PPP", { locale: ptBR }) : <span>Selecione uma data</span>}
+                </div>
+                {showCalendar ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+
+              {showCalendar && (
+                <Card className="p-4 border-2">
+                  <CalendarComponent
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        if (isDayFullyBooked(date)) {
+                          setSelectedDayFullyBooked(true);
+                          toast({
+                            title: "Dia indisponível",
+                            description: "Todos os horários deste dia já estão ocupados.",
+                            variant: "destructive"
+                          });
+                        } else {
+                          setSelectedDate(date);
+                          setSelectedTime('');
+                          setSelectedDayFullyBooked(false);
+                          setShowCalendar(false);
+                        }
+                      }
+                    }}
+                    disabled={isDayDisabled}
+                    modifiers={{
+                      fullyBooked: (date) => isDayFullyBooked(date),
+                      partiallyBooked: (date) => isDayPartiallyBooked(date)
+                    }}
+                    modifiersClassNames={{
+                      fullyBooked: "bg-red-500/20 text-red-900 dark:text-red-300 line-through",
+                      partiallyBooked: "bg-orange-500/20 text-orange-900 dark:text-orange-300"
+                    }}
+                    className="pointer-events-auto w-full"
+                  />
+                  <div className="mt-3 space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-red-500/20 border border-red-500 rounded"></div>
+                      <span>Dia totalmente agendado</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-orange-500/20 border border-orange-500 rounded"></div>
+                      <span>Dia com agendamentos</span>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {selectedDayFullyBooked && selectedDate && (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Todos os horários de {format(selectedDate, "dd/MM/yyyy")} estão ocupados. Selecione outra data.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Horário</label>
-            <Select value={selectedTime} onValueChange={setSelectedTime}>
+            <Select value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedDate || selectedDayFullyBooked}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecione um horário" />
+                <SelectValue placeholder={selectedDate ? "Selecione um horário" : "Selecione uma data primeiro"} />
               </SelectTrigger>
               <SelectContent>
-                {timeSlots.map((time) => {
-                  const isConflicted = conflictedSlots.includes(time);
-                  return (
+                {timeSlots.length === 0 ? (
+                  <div className="p-2 text-sm text-muted-foreground">
+                    Nenhum horário disponível para esta data
+                  </div>
+                ) : (
+                  timeSlots.map((slot) => (
                     <SelectItem 
-                      key={time} 
-                      value={time}
-                      disabled={isConflicted}
+                      key={slot.time} 
+                      value={slot.time}
+                      disabled={!slot.available}
+                      className={!slot.available ? "text-red-500" : ""}
                     >
                       <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        {time}
-                        {isConflicted && (
-                          <span className="text-xs text-red-500">(Ocupado)</span>
+                        <Clock className={cn("w-4 h-4", !slot.available && "text-red-500")} />
+                        <span className={!slot.available ? "line-through" : ""}>{slot.time}</span>
+                        {!slot.available && (
+                          <span className="text-xs font-semibold text-red-600">(Agendado)</span>
                         )}
                       </div>
                     </SelectItem>
-                  );
-                })}
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>

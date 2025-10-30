@@ -88,6 +88,11 @@ const InfiniteSlidingGallery = () => {
     return () => cancelAnimationFrame(animationFrame);
   }, [cards, paused]);
 
+  // Não renderiza a seção se não houver fotos
+  if (!isLoading && fotosClientes.length === 0) {
+    return null;
+  }
+
   return (
     <div className="w-full bg-background py-20 overflow-hidden">
       <div className="text-center space-y-1">

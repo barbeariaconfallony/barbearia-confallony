@@ -96,6 +96,13 @@ interface Statistics {
     count: number;
   }>;
   totalCancelamentos: number;
+  totalAgendamentosRealizados: number;
+  topClientesRecorrentes: Array<{
+    nome: string;
+    email: string;
+    quantidade: number;
+  }>;
+  crescimentoPorPeriodo: number;
 }
 const Admin = () => {
   const {
@@ -301,8 +308,12 @@ const Admin = () => {
       const appointmentsPeriodSnapshot = await getDocs(appointmentsPeriodQuery);
       const agendamentosHoje = appointmentsPeriodSnapshot.size;
 
-      // Cancelamentos no período
-      const cancelamentosQuery = query(collection(db, 'fila'), where('data', '>=', periodStartDate), where('data', '<=', periodEndDate), where('status', '==', 'cancelado'));
+      // Cancelamentos no período - buscar da coleção agendamentos_cancelados
+      const cancelamentosQuery = query(
+        collection(db, 'agendamentos_cancelados'),
+        where('data', '>=', periodStartDate),
+        where('data', '<=', periodEndDate)
+      );
       const cancelamentosSnapshot = await getDocs(cancelamentosQuery);
       const totalCancelamentos = cancelamentosSnapshot.size;
 
@@ -326,19 +337,27 @@ const Admin = () => {
       });
       const servicoMaisVendido = Object.entries(serviceCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "Nenhum";
 
-      // Horário pico baseado em dados reais
-      const horarioQuery = query(collection(db, 'agendamentos_finalizados'));
+      // Horário pico baseado em dados reais do período filtrado
+      const horarioQuery = query(
+        collection(db, 'agendamentos_finalizados'),
+        where('data_conclusao', '>=', periodStartDate),
+        where('data_conclusao', '<=', periodEndDate)
+      );
       const horarioSnapshot = await getDocs(horarioQuery);
       const horarioCounts: Record<string, number> = {};
+      
       horarioSnapshot.forEach(doc => {
         const data = doc.data();
-        if (data.tempo_inicio) {
-          const hora = format(data.tempo_inicio.toDate(), 'HH');
+        // Verificar tanto tempo_inicio quanto data_atendimento
+        const dataHorario = data.tempo_inicio?.toDate() || data.data_atendimento?.toDate() || data.data_conclusao?.toDate();
+        if (dataHorario) {
+          const hora = format(dataHorario, 'HH');
           horarioCounts[hora] = (horarioCounts[hora] || 0) + 1;
         }
       });
+      
       const horarioPico = Object.entries(horarioCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "14";
-      const horarioPicoFormatted = `${horarioPico}:00 - ${parseInt(horarioPico) + 2}:00`;
+      const horarioPicoFormatted = `${horarioPico}:00`;
 
       // Faturamento diário do período
       const faturamentoDiario = await Promise.all(periodDays.map(async day => {
@@ -398,9 +417,60 @@ const Admin = () => {
       });
       const clientesRecorrentes = Object.values(clienteEmails).filter(count => count > 1).length;
 
-      // Taxa de cancelamento baseada em dados reais
-      const totalAgendamentos = agendamentosHoje + totalCancelamentos;
-      const taxaCancelamento = totalAgendamentos > 0 ? totalCancelamentos / totalAgendamentos * 100 : 0;
+      // Buscar total de agendamentos realizados (finalizados) no período
+      const agendamentosRealizadosQuery = query(
+        collection(db, 'agendamentos_finalizados'),
+        where('data_conclusao', '>=', periodStartDate),
+        where('data_conclusao', '<=', periodEndDate)
+      );
+      const agendamentosRealizadosSnapshot = await getDocs(agendamentosRealizadosQuery);
+      const totalAgendamentosRealizados = agendamentosRealizadosSnapshot.size;
+      
+      // Taxa de cancelamento baseada em dados reais: cancelamentos / (finalizados + cancelados)
+      const totalAgendamentosProcessados = totalAgendamentosRealizados + totalCancelamentos;
+      const taxaCancelamento = totalAgendamentosProcessados > 0 ? (totalCancelamentos / totalAgendamentosProcessados) * 100 : 0;
+      
+      // Calcular top 10 clientes recorrentes no período
+      const clientesAgendamentosQuery = query(
+        collection(db, 'agendamentos_finalizados'),
+        where('data_conclusao', '>=', periodStartDate),
+        where('data_conclusao', '<=', periodEndDate)
+      );
+      const clientesAgendamentosSnapshot = await getDocs(clientesAgendamentosQuery);
+      const clienteContagem: Record<string, { nome: string; email: string; quantidade: number }> = {};
+      
+      clientesAgendamentosSnapshot.forEach(doc => {
+        const data = doc.data();
+        const email = data.usuario_email;
+        const nome = data.usuario_nome;
+        if (email) {
+          if (!clienteContagem[email]) {
+            clienteContagem[email] = { nome: nome || 'Cliente', email, quantidade: 0 };
+          }
+          clienteContagem[email].quantidade++;
+        }
+      });
+      
+      const topClientesRecorrentes = Object.values(clienteContagem)
+        .sort((a, b) => b.quantidade - a.quantidade)
+        .slice(0, 10);
+
+      // Calcular crescimento por período (comparar com período anterior de mesma duração)
+      const periodoDias = Math.ceil((periodEndDate.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24));
+      const periodoAnteriorStart = subDays(periodStartDate, periodoDias);
+      const periodoAnteriorEnd = subDays(periodEndDate, periodoDias);
+      
+      const agendamentosAnteriorQuery = query(
+        collection(db, 'agendamentos_finalizados'),
+        where('data_conclusao', '>=', periodoAnteriorStart),
+        where('data_conclusao', '<=', periodoAnteriorEnd)
+      );
+      const agendamentosAnteriorSnapshot = await getDocs(agendamentosAnteriorQuery);
+      const totalAnterior = agendamentosAnteriorSnapshot.size;
+      const totalAtual = totalAgendamentosRealizados;
+      
+      const crescimentoPorPeriodo = totalAnterior > 0 ? ((totalAtual - totalAnterior) / totalAnterior) * 100 : 0;
+      
       const newStats: Statistics = {
         totalClientes,
         agendamentosHoje,
@@ -413,7 +483,10 @@ const Admin = () => {
         clientesRecorrentes,
         taxaCancelamento,
         clientesPorRegiao,
-        totalCancelamentos
+        totalCancelamentos,
+        totalAgendamentosRealizados,
+        topClientesRecorrentes,
+        crescimentoPorPeriodo
       };
 
       // Salvar no cache

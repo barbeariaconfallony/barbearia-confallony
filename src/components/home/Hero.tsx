@@ -1,17 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { Calendar, Scissors, Users, ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
-import heroImage from "@/assets/barbershop-hero.jpg";
-import logoMain from "@/assets/confallony-logo-main.png";
+import heroImage from "@/assets/hero.png";
+import logoMain from "@/assets/confallony-logo-new.png";
 const Hero = () => {
   return <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background Image with Gradient Fade */}
       <div className="absolute inset-0 z-0">
         <img src={heroImage} alt="Barbearia Confallony - Interior moderno e sofisticado" className="w-full h-full object-cover" />
         {/* Overlay escuro principal */}
-        <div className="absolute inset-0 bg-background opacity-70"></div>
+        <div className="absolute inset-0 bg-background opacity-55"></div>
         {/* Overlay adicional para suavizar */}
-        <div className="absolute inset-0 bg-gray-950/30"></div>
+        <div className="absolute inset-0 bg-gray-950/20"></div>
         {/* Gradiente de fade para o footer */}
         <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background to-transparent" style={{
         zIndex: 1
@@ -24,12 +24,12 @@ const Hero = () => {
           {/* Logo and Main Heading */}
           <div className="space-y-4 sm:space-y-6">
             <div className="flex justify-center">
-              <img src={logoMain} alt="Confallony Barbearia - Estilo Homem" className="h-48 sm:h-56 lg:h-64 w-auto" style={{
+              <img src={logoMain} alt="Confallony Barbearia - Estilo Homem" className="h-80 sm:h-[28rem] lg:h-[32rem] w-auto" style={{
               filter: 'drop-shadow(0 0 20px rgba(218, 165, 32, 0.4))',
               transition: 'filter 0.3s ease'
             }} />
             </div>
-            <p className="text-base sm:text-xl lg:text-2xl text-foreground/90 max-w-3xl mx-auto leading-relaxed px-2">
+            <p className="text-base sm:text-xl lg:text-2xl text-foreground/90 max-w-3xl mx-auto leading-relaxed px-2 -mt-16 sm:-mt-24 lg:-mt-32">
               Tradição, estilo e modernidade em cada corte. 
               Experimente o melhor atendimento da cidade.
             </p>

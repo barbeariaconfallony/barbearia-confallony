@@ -7,13 +7,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { User, Calendar, History, Settings, Award, Wallet, Phone, Mail, LogOut, CheckCircle, ShoppingCart, Palette, CreditCard, Banknote, Clock, Plus, MapPin, Timer, Check, AlertTriangle, X, QrCode, Download, TrendingUp, Filter, DollarSign, BarChart3, Star, Crown, Zap, Bell, Receipt, Camera, Upload, Eye, Image as ImageIcon, Pencil, Gift, Percent } from "lucide-react";
+import { User, Calendar, History, Settings, Award, Wallet, Phone, Mail, LogOut, CheckCircle, ShoppingCart, Palette, CreditCard, Banknote, Clock, Plus, MapPin, Timer, Check, AlertTriangle, X, QrCode, Download, TrendingUp, Filter, DollarSign, BarChart3, Star, Crown, Zap, Bell, Receipt, Camera, Upload, Eye, Image as ImageIcon, Pencil, Gift, Percent, RefreshCw, XCircle } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditAgendamentoModal } from "@/components/EditAgendamentoModal";
 import { ReagendamentoModal } from "@/components/ReagendamentoModal";
-import { collection, query, where, getDocs, orderBy, limit as firestoreLimit, onSnapshot, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, limit as firestoreLimit, onSnapshot, updateDoc, doc, addDoc, deleteDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { format, isFuture, isToday, differenceInSeconds, isBefore, addMinutes, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, subMonths, eachMonthOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -47,6 +47,11 @@ interface QueueItem {
   barbeiro?: string;
   reagendado?: boolean;
   editado?: boolean;
+  cancelado?: boolean;
+  pagamento_parcial?: boolean;
+  valor_restante?: number;
+  valor_total?: number;
+  valor_pago?: number;
   tempo_estimado?: number;
   funcionario_nome?: string;
   sala_atendimento?: string;
@@ -304,11 +309,13 @@ const AvaliacaoItem = ({
 const CountdownTimer = ({
   targetDate,
   isInService = false,
-  endTime
+  endTime,
+  pagamentoParcial = false
 }: {
   targetDate: Date;
   isInService?: boolean;
   endTime?: Date;
+  pagamentoParcial?: boolean;
 }) => {
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
@@ -380,6 +387,12 @@ const CountdownTimer = ({
         {String(timeLeft.minutes).padStart(2, '0')}:
         {String(timeLeft.seconds).padStart(2, '0')} para o início do atendimento.
       </p>
+      {pagamentoParcial && (
+        <p className="text-xs text-amber-600 font-medium mt-2 flex items-center gap-1">
+          <Wallet className="h-3 w-3" />
+          Pague o restante após a conclusão do serviço na barbearia.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground mt-3">Obrigado pela preferência, estamos te aguardando!</p>
     </div>;
 };
@@ -399,12 +412,13 @@ const ProfileMobile = () => {
   } = useToast();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("perfil");
-  const [historicoSubTab, setHistoricoSubTab] = useState<"agendamentos_pendentes" | "agendamentos_finalizados" | "comandas_abertas" | "comandas_finalizadas">("agendamentos_pendentes");
+  const [historicoSubTab, setHistoricoSubTab] = useState<"agendamentos_pendentes" | "agendamentos_finalizados" | "agendamentos_cancelados" | "comandas_abertas" | "comandas_finalizadas">("agendamentos_pendentes");
   const [filtroMetodo, setFiltroMetodo] = useState<string>("todos");
   const [filtroPeriodo, setFiltroPeriodo] = useState<"mensal" | "anual">("mensal");
   const [filtroDataInicio, setFiltroDataInicio] = useState<Date | null>(null);
   const [filtroDataFim, setFiltroDataFim] = useState<Date | null>(null);
   const [agendamentos, setAgendamentos] = useState<QueueItem[]>([]);
+  const [agendamentosCancelados, setAgendamentosCancelados] = useState<QueueItem[]>([]);
   const [agendamentosFinalizados, setAgendamentosFinalizados] = useState<AtendimentoConcluido[]>([]);
   const [atendimentosConcluidos, setAtendimentosConcluidos] = useState<AtendimentoConcluido[]>([]);
   const [comandasAbertas, setComandasAbertas] = useState<Comanda[]>([]);
@@ -551,7 +565,7 @@ const ProfileMobile = () => {
     const loadData = async () => {
       if (!userData?.email) return;
       try {
-        // Carrega agendamentos pendentes e em atendimento
+        // Carrega agendamentos pendentes e em atendimento (apenas aguardando_confirmacao para Pendentes)
         const qAgendamentos = query(collection(db, 'fila'), where('usuario_email', '==', userData.email), where('status', 'in', ['aguardando_confirmacao', 'confirmado', 'em_atendimento']));
         const agendamentosSnapshot = await getDocs(qAgendamentos);
         const items: QueueItem[] = [];
@@ -569,7 +583,17 @@ const ProfileMobile = () => {
             forma_pagamento: data.forma_pagamento || '',
             tempo_inicio: data.tempo_inicio?.toDate(),
             tempo_fim: data.tempo_fim?.toDate(),
-            duracao: data.duracao || data.tempo_estimado || 30
+            duracao: data.duracao || data.tempo_estimado || 30,
+            cancelamentos: data.cancelamentos || 0,
+            barbeiro: data.barbeiro,
+            reagendado: data.reagendado || false,
+            editado: data.editado || false,
+            cancelado: data.cancelado || false,
+            tempo_estimado: data.tempo_estimado || 30,
+            pagamento_parcial: data.pagamento_parcial || false,
+            valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+            valor_total: data.valor_total || 0,
+            valor_pago: data.valor_pago || 0
           });
         });
         const sortedAgendamentos = items.sort((a, b) => a.data.getTime() - b.data.getTime());
@@ -588,7 +612,8 @@ const ProfileMobile = () => {
         const agendamentosFinalizadosSnapshot = await getDocs(qAgendamentosFinalizados);
         const agendamentosFinalizadosItems: AtendimentoConcluido[] = [];
         const naoAvaliados: AtendimentoConcluido[] = [];
-        const idsProcessados = new Set<string>(); // Controle de duplicação
+        const idsProcessados = new Set<string>(); // Controle de duplicação por ID
+        const idsNaoAvaliados = new Set<string>(); // Controle adicional para não avaliados
 
         agendamentosFinalizadosSnapshot.forEach(doc => {
           // Evitar duplicação por ID
@@ -614,7 +639,10 @@ const ProfileMobile = () => {
             avaliacao: data.avaliacao
           };
           agendamentosFinalizadosItems.push(item);
-          if (!item.avaliado) {
+          
+          // Adicionar aos não avaliados apenas se não estiver avaliado E não for duplicado
+          if (!item.avaliado && !idsNaoAvaliados.has(item.id)) {
+            idsNaoAvaliados.add(item.id);
             naoAvaliados.push(item);
           }
         });
@@ -681,6 +709,35 @@ const ProfileMobile = () => {
           });
         });
         setComandasFinalizadas(comandasFinalizadasItems.sort((a, b) => b.data_criacao.getTime() - a.data_criacao.getTime()));
+
+        // Carrega agendamentos cancelados
+        const qAgendamentosCancelados = query(collection(db, 'agendamentos_cancelados'), where('usuario_email', '==', userData.email));
+        const agendamentosCanceladosSnapshot = await getDocs(qAgendamentosCancelados);
+        const agendamentosCanceladosItems: QueueItem[] = [];
+        agendamentosCanceladosSnapshot.forEach(doc => {
+          const data = doc.data();
+          agendamentosCanceladosItems.push({
+            id: doc.id,
+            servico_nome: data.servico_nome,
+            preco: data.preco || 0,
+            status: 'cancelado',
+            data: data.data?.toDate() || new Date(),
+            presente: data.presente || false,
+            funcionario_nome: data.funcionario_nome || '',
+            sala_atendimento: data.sala_atendimento || '',
+            forma_pagamento: data.forma_pagamento || '',
+            tempo_inicio: data.tempo_inicio?.toDate(),
+            tempo_fim: data.tempo_fim?.toDate(),
+            duracao: data.duracao || data.tempo_estimado || 30,
+            cancelamentos: data.cancelamentos || 0,
+            barbeiro: data.barbeiro,
+            reagendado: data.reagendado || false,
+            editado: data.editado || false,
+            cancelado: true,
+            tempo_estimado: data.tempo_estimado || 30
+          });
+        });
+        setAgendamentosCancelados(agendamentosCanceladosItems.sort((a, b) => b.data.getTime() - a.data.getTime()));
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
       } finally {
@@ -717,34 +774,62 @@ const ProfileMobile = () => {
     }
   };
 
-  // Cancela agendamento incrementando contador de cancelamentos
+  // Cancela agendamento movendo para coleção de cancelados
   const handleCancelarAgendamento = async (id: string) => {
     try {
+      console.log('🚫 Iniciando cancelamento do agendamento:', id);
+      
       const agendamento = agendamentos.find(a => a.id === id);
-      if (!agendamento) return;
-      await updateDoc(doc(db, 'fila', id), {
-        status: 'aguardando_confirmacao',
-        presente: false,
-        cancelamentos: ((agendamento as any).cancelamentos || 0) + 1
-      });
+      if (!agendamento) {
+        console.log('❌ Agendamento não encontrado na lista local');
+        return;
+      }
 
-      // Atualiza a lista local
-      setAgendamentos(prev => prev.map(a => a.id === id ? {
-        ...a,
-        status: 'aguardando_confirmacao' as const,
-        presente: false,
-        cancelamentos: ((a as any).cancelamentos || 0) + 1
-      } : a));
+      // Buscar dados completos do agendamento
+      const agendamentoRef = doc(db, 'fila', id);
+      console.log('📄 Buscando documento na fila...');
+      const agendamentoSnap = await getDoc(agendamentoRef);
+
+      if (!agendamentoSnap.exists()) {
+        console.log('❌ Documento não existe na fila');
+        throw new Error('Agendamento não encontrado na fila');
+      }
+
+      const agendamentoData = agendamentoSnap.data();
+      console.log('✅ Dados do agendamento recuperados:', agendamentoData);
+
+      // Preparar dados para a coleção de cancelados
+      const canceledAppointment = {
+        ...agendamentoData,
+        cancelado_em: new Date(),
+        cancelado_por: userData?.email || '',
+        cancelamentos: (agendamentoData.cancelamentos || 0) + 1,
+        motivo_cancelamento: 'Cancelado pelo cliente'
+      };
+
+      // Salvar na coleção de agendamentos cancelados
+      console.log('💾 Salvando na coleção agendamentos_cancelados...');
+      const docRef = await addDoc(collection(db, 'agendamentos_cancelados'), canceledAppointment);
+      console.log('✅ Salvo com sucesso, ID:', docRef.id);
+
+      // Remover da fila
+      console.log('🗑️ Removendo da fila...');
+      await deleteDoc(agendamentoRef);
+      console.log('✅ Removido da fila com sucesso!');
+
+      // Atualizar lista local removendo o agendamento
+      setAgendamentos(prev => prev.filter(a => a.id !== id));
+
       toast({
         title: "Agendamento cancelado",
-        description: "Seu agendamento foi cancelado e está aguardando confirmação.",
+        description: "Seu agendamento foi removido da fila e movido para cancelados.",
         variant: "destructive"
       });
     } catch (error) {
-      console.error('Erro ao cancelar agendamento:', error);
+      console.error('❌ ERRO ao cancelar agendamento:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível cancelar o agendamento.",
+        description: error instanceof Error ? error.message : "Não foi possível cancelar o agendamento.",
         variant: "destructive"
       });
     }
@@ -780,7 +865,16 @@ const ProfileMobile = () => {
           presente: data.presente || false,
           tempo_inicio: data.tempo_inicio?.toDate(),
           tempo_fim: data.tempo_fim?.toDate(),
-          duracao: data.duracao || data.tempo_estimado || 30
+          duracao: data.duracao || data.tempo_estimado || 30,
+          funcionario_nome: data.funcionario_nome,
+          sala_atendimento: data.sala_atendimento,
+          forma_pagamento: data.forma_pagamento,
+          pagamento_parcial: data.pagamento_parcial || false,
+          valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+          valor_total: data.valor_total || 0,
+          valor_pago: data.valor_pago || 0,
+          editado: data.editado || false,
+          cancelado: data.cancelado || false
         };
 
         // Filtrar apenas agendamentos de hoje ou em andamento
@@ -1197,16 +1291,32 @@ const ProfileMobile = () => {
             <QuickBookingCard userEmail={userData?.email} />
 
             {/* Agendamentos Pendentes ou em Atendimento */}
-            {agendamentos.length > 0 && <div className="space-y-3 mb-6">
-                {(() => {
-              const agendamentoEmAtendimento = agendamentos.find(a => a.status === 'em_atendimento');
+            {(() => {
+              // Filtrar agendamentos: não cancelados OU com pagamento parcial pendente
+              const agendamentosVisiveis = agendamentos.filter(agendamento => {
+                const cancelado = (agendamento as any).cancelado;
+                const pagamentoParcial = (agendamento as any).pagamento_parcial;
+                
+                // Se cancelado E NÃO tem pagamento parcial pendente, ocultar
+                if (cancelado && !pagamentoParcial) return false;
+                
+                // Se concluído E NÃO tem pagamento parcial pendente, ocultar
+                if (agendamento.status === 'concluido' && !pagamentoParcial) return false;
+                
+                return true;
+              });
+              
+              if (agendamentosVisiveis.length === 0) return null;
+              
+              const agendamentoEmAtendimento = agendamentosVisiveis.find(a => a.status === 'em_atendimento');
               const titulo = agendamentoEmAtendimento ? 'Agendamento em Atendimento' : 'Agendamentos Pendentes';
-              return <>
+              
+              return <div className="space-y-3 mb-6">
                       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                         <Clock className="h-4 w-4 text-primary" />
                         {titulo}
                       </h3>
-                      {agendamentos.map(agendamento => {
+                      {agendamentosVisiveis.map(agendamento => {
                   const isInService = agendamento.status === 'em_atendimento';
                   return <Card key={agendamento.id} className="bg-card/50 backdrop-blur border-primary/20 overflow-hidden">
                             <CardContent className="pt-4 pb-4 space-y-3">
@@ -1235,21 +1345,51 @@ const ProfileMobile = () => {
                                       </div>}
                                   </div>
                                 </div>
-                                <Badge variant={isInService ? 'default' : agendamento.status === 'confirmado' ? 'default' : 'secondary'} className="flex-shrink-0 text-[10px] px-2 py-1">
-                                  {isInService ? <><Timer className="h-2.5 w-2.5 mr-1" />Em Atendimento</> : agendamento.status === 'confirmado' ? <><CheckCircle className="h-2.5 w-2.5 mr-1" />Confirmado</> : <><Clock className="h-2.5 w-2.5 mr-1" />Aguardando</>}
-                                </Badge>
+                                <div className="flex flex-col gap-1 items-end">
+                                  <Badge variant={isInService ? 'default' : agendamento.status === 'confirmado' ? 'default' : 'secondary'} className="flex-shrink-0 text-[10px] px-2 py-1">
+                                    {isInService ? <><Timer className="h-2.5 w-2.5 mr-1" />Em Atendimento</> : agendamento.status === 'confirmado' ? <><CheckCircle className="h-2.5 w-2.5 mr-1" />Confirmado</> : <><Clock className="h-2.5 w-2.5 mr-1" />Aguardando</>}
+                                  </Badge>
+                                  {(agendamento as any).pagamento_parcial && (
+                                    <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/20">
+                                      <Wallet className="h-2.5 w-2.5 mr-1" />
+                                      Pagamento Parcial
+                                    </Badge>
+                                  )}
+                                  {agendamento.editado && (
+                                    <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-blue-500 text-blue-600">
+                                      <RefreshCw className="h-2.5 w-2.5 mr-1" />
+                                      Reagendado
+                                    </Badge>
+                                  )}
+                                  {(agendamento as any).cancelado && (
+                                    <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-red-500 text-red-600">
+                                      <XCircle className="h-2.5 w-2.5 mr-1" />
+                                      Cancelado
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                               
-                              <CountdownTimer targetDate={agendamento.data} isInService={isInService} endTime={agendamento.tempo_fim} />
+                              <CountdownTimer targetDate={agendamento.data} isInService={isInService} endTime={agendamento.tempo_fim} pagamentoParcial={(agendamento as any).pagamento_parcial} />
                               
                               <div className="flex flex-col gap-3 pt-3 border-t border-primary/20">
                                 <div className="flex items-center justify-between gap-2">
-                                  <p className="text-lg font-bold text-primary">
-                                    R$ {agendamento.preco.toLocaleString('pt-BR', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2
-                            })}
-                                  </p>
+                                  <div className="flex flex-col">
+                                    <p className="text-lg font-bold text-primary">
+                                      R$ {agendamento.preco.toLocaleString('pt-BR', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                              })}
+                                    </p>
+                                    {(agendamento as any).pagamento_parcial && (agendamento as any).valor_restante > 0 && (
+                                      <p className="text-[10px] text-amber-600 font-medium">
+                                        Restante: R$ {((agendamento as any).valor_restante).toLocaleString('pt-BR', {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2
+                                        })}
+                                      </p>
+                                    )}
+                                  </div>
                                   <div className={`text-[10px] flex-shrink-0 ${isInService ? 'text-green-600' : agendamento.status === 'confirmado' ? 'text-green-600' : 'text-amber-600'}`}>
                                     {isInService ? <div className="flex items-center gap-1">
                                         <Timer className="h-2.5 w-2.5" />
@@ -1293,7 +1433,7 @@ const ProfileMobile = () => {
                                             Cancelar Agendamento
                                           </Button>
                                         </AlertDialogTrigger>
-                                        <AlertDialogContent className="max-w-sm">
+                                        <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md mx-4">
                                           <AlertDialogHeader className="text-left">
                                             <AlertDialogTitle className="flex items-center gap-2 text-sm">
                                               <AlertTriangle className="h-4 w-4 text-orange-500" />
@@ -1306,33 +1446,32 @@ const ProfileMobile = () => {
                                               <strong>Atenção:</strong> Você só pode cancelar 1 vez por agendamento.
                                             </AlertDialogDescription>
                                           </AlertDialogHeader>
-                                          <AlertDialogFooter className="flex-col gap-2">
-                                            {!agendamento.editado && <Button variant="outline" onClick={() => handleEditarAgendamento(agendamento)} className="w-full text-xs">
-                                                Editar Agendamento
+                                          <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
+                                            {!agendamento.editado && <Button variant="outline" onClick={() => handleEditarAgendamento(agendamento)} className="w-full text-xs h-9">
+                                                Reagendar
                                               </Button>}
-                                            <AlertDialogCancel className="w-full text-xs">
+                                            <AlertDialogCancel className="w-full text-xs h-9 mt-0">
                                               Manter Agendamento
                                             </AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => handleCancelarAgendamento(agendamento.id)} className="w-full text-xs bg-destructive">
+                                            <AlertDialogAction onClick={() => handleCancelarAgendamento(agendamento.id)} className="w-full text-xs h-9 bg-destructive">
                                               Confirmar Cancelamento
                                             </AlertDialogAction>
                                           </AlertDialogFooter>
                                         </AlertDialogContent>
-                                      </AlertDialog> : agendamento.cancelamentos === 1 && !agendamento.reagendado ? <Button variant="outline" size="sm" className="w-full text-xs h-9 border-blue-500 text-blue-600" onClick={() => handleReagendarAgendamento(agendamento)}>
+                                      </AlertDialog> : agendamento.cancelamentos === 1 && !agendamento.editado ? <Button variant="outline" size="sm" className="w-full text-xs h-9 border-blue-500 text-blue-600" onClick={() => handleReagendarAgendamento(agendamento)}>
                                         <Calendar className="h-3 w-3 mr-2" />
                                         Reagendar sem Cobrança
                                       </Button> : <Badge variant="destructive" className="flex items-center gap-1 text-xs justify-center py-2">
                                         <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                                        <span className="text-[10px]">{agendamento.reagendado ? 'Reagendado' : 'Limite excedido'}</span>
+                                        <span className="text-[10px]">{agendamento.editado ? 'Reagendado' : 'Limite excedido'}</span>
                                       </Badge>}
                                   </div>}
                               </div>
                             </CardContent>
                           </Card>;
                 })}
-                    </>;
+              </div>;
             })()}
-              </div>}
 
           </div>;
       case "historico":
@@ -1358,6 +1497,15 @@ const ProfileMobile = () => {
                     <span className="font-medium text-xs">Finalizados</span>
                     <Badge variant={historicoSubTab === "agendamentos_finalizados" ? "secondary" : "outline"} className="text-xs">
                       {agendamentosFinalizados.length}
+                    </Badge>
+                  </div>
+                </button>
+
+                <button onClick={() => setHistoricoSubTab("agendamentos_cancelados")} className={`w-full py-2 px-3 rounded-md transition-colors ${historicoSubTab === "agendamentos_cancelados" ? "bg-primary text-primary-foreground" : "bg-background/50 text-muted-foreground hover:text-foreground hover:bg-background"}`}>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="font-medium text-xs">Cancelados</span>
+                    <Badge variant={historicoSubTab === "agendamentos_cancelados" ? "secondary" : "outline"} className="text-xs">
+                      {agendamentosCancelados.length}
                     </Badge>
                   </div>
                 </button>
@@ -1422,7 +1570,47 @@ const ProfileMobile = () => {
                           </Button>}
                       </div>
                     </CardContent>
-                  </Card>) : historicoSubTab === "agendamentos_finalizados" ? <UltimosAgendamentos userEmail={userData?.email || ''} maxItems={50} compact={false} /> : historicoSubTab === "comandas_abertas" ? comandasAbertas.length === 0 ? <Card className="bg-card/50 backdrop-blur">
+                  </Card>) : historicoSubTab === "agendamentos_finalizados" ? <UltimosAgendamentos userEmail={userData?.email || ''} maxItems={50} compact={false} /> : historicoSubTab === "agendamentos_cancelados" ? agendamentosCancelados.length === 0 ? <Card className="bg-card/50 backdrop-blur">
+                  <CardContent className="pt-6 text-center py-8">
+                    <XCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">Nenhum agendamento cancelado</p>
+                  </CardContent>
+                </Card> : agendamentosCancelados.map(agendamento => <Card key={agendamento.id} className="bg-card/50 backdrop-blur border-destructive/20">
+                    <CardContent className="pt-6">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="font-semibold text-foreground">{agendamento.servico_nome}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {format(agendamento.data, "dd 'de' MMMM 'às' HH:mm", {
+                      locale: ptBR
+                    })}
+                          </p>
+                          {agendamento.funcionario_nome && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Profissional: {agendamento.funcionario_nome}
+                            </p>
+                          )}
+                          {agendamento.sala_atendimento && (
+                            <p className="text-xs text-muted-foreground">
+                              Sala: {agendamento.sala_atendimento}
+                            </p>
+                          )}
+                        </div>
+                        <Badge variant="destructive" className="flex items-center gap-1">
+                          <XCircle className="h-3 w-3" />
+                          Cancelado
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xl font-bold text-muted-foreground line-through">
+                          R$ {agendamento.preco.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>) : historicoSubTab === "comandas_abertas" ? comandasAbertas.length === 0 ? <Card className="bg-card/50 backdrop-blur">
                   <CardContent className="pt-6 text-center py-8">
                     <ShoppingCart className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground">Nenhuma comanda aberta</p>
@@ -1974,8 +2162,64 @@ const ProfileMobile = () => {
                   </p>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 space-y-2">
                   <NotificationPermissionButton />
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={async () => {
+                      if (!currentUser?.uid) {
+                        toast({
+                          title: "Erro",
+                          description: "Usuário não autenticado",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+
+                      try {
+                        const { supabase } = await import('@/integrations/supabase/client');
+                        
+                        const { data, error } = await supabase.functions.invoke('send-onesignal-notification', {
+                          body: {
+                            userIds: [currentUser.uid],
+                            title: '🔔 Notificação de Teste',
+                            message: 'Esta é uma notificação de teste do sistema OneSignal!',
+                            data: { type: 'test' }
+                          }
+                        });
+
+                        if (error) {
+                          console.error('Erro ao enviar notificação:', error);
+                          toast({
+                            title: "Erro ao enviar",
+                            description: "Não foi possível enviar a notificação de teste",
+                            variant: "destructive"
+                          });
+                          return;
+                        }
+
+                        toast({
+                          title: "Notificação enviada!",
+                          description: data?.recipients > 0 
+                            ? "Você deve receber a notificação em instantes" 
+                            : "Certifique-se de ter ativado as notificações",
+                        });
+                      } catch (error) {
+                        console.error('Erro:', error);
+                        toast({
+                          title: "Erro",
+                          description: "Ocorreu um erro ao enviar a notificação",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                  >
+                    <Bell className="h-4 w-4 mr-2" />
+                    Testar Notificação
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -2050,6 +2294,7 @@ const ProfileMobile = () => {
       {selectedAgendamento && <>
           <EditAgendamentoModal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} agendamento={selectedAgendamento} onUpdate={() => {
         setEditModalOpen(false);
+        setSelectedAgendamento(null);
         // Recarrega agendamentos após edição
         const loadData = async () => {
           if (userData?.email) {
@@ -2069,7 +2314,15 @@ const ProfileMobile = () => {
                 barbeiro: data.barbeiro,
                 reagendado: data.reagendado || false,
                 editado: data.editado || false,
-                tempo_estimado: data.tempo_estimado || 30
+                tempo_estimado: data.tempo_estimado || 30,
+                funcionario_nome: data.funcionario_nome || '',
+                sala_atendimento: data.sala_atendimento || '',
+                forma_pagamento: data.forma_pagamento || '',
+                cancelado: data.cancelado || false,
+                pagamento_parcial: data.pagamento_parcial || false,
+                valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+                valor_total: data.valor_total || 0,
+                valor_pago: data.valor_pago || 0
               });
             });
             setAgendamentos(items.sort((a, b) => a.data.getTime() - b.data.getTime()));
@@ -2102,7 +2355,15 @@ const ProfileMobile = () => {
                 barbeiro: data.barbeiro,
                 reagendado: data.reagendado || false,
                 editado: data.editado || false,
-                tempo_estimado: data.tempo_estimado || 30
+                tempo_estimado: data.tempo_estimado || 30,
+                funcionario_nome: data.funcionario_nome || '',
+                sala_atendimento: data.sala_atendimento || '',
+                forma_pagamento: data.forma_pagamento || '',
+                cancelado: data.cancelado || false,
+                pagamento_parcial: data.pagamento_parcial || false,
+                valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+                valor_total: data.valor_total || 0,
+                valor_pago: data.valor_pago || 0
               });
             });
             setAgendamentos(items.sort((a, b) => a.data.getTime() - b.data.getTime()));

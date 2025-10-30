@@ -5,7 +5,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, X, MessageCircle, Phone, AlertTriangle, User } from 'lucide-react';
-import { updateDoc, doc, deleteDoc, addDoc, collection } from 'firebase/firestore';
+import { updateDoc, doc, deleteDoc, addDoc, collection, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -78,29 +78,23 @@ export const QueueItemActionsModal: React.FC<QueueItemActionsModalProps> = ({
   const handleCancelPresence = async () => {
     setIsLoading(true);
     try {
-      // Dados do agendamento cancelado
+      // Buscar dados completos do agendamento
+      const agendamentoRef = doc(db, 'fila', item.id);
+      const agendamentoSnap = await getDoc(agendamentoRef);
+
+      if (!agendamentoSnap.exists()) {
+        throw new Error('Agendamento não encontrado na fila');
+      }
+
+      const agendamentoData = agendamentoSnap.data();
+
+      // Preparar dados para a coleção de cancelados (seguindo padrão do ProfileMobile)
       const canceledAppointment = {
-        // Dados originais do agendamento
-        usuario_id: item.usuario_id,
-        usuario_nome: item.usuario_nome,
-        usuario_email: item.usuario_email || '',
-        usuario_telefone: item.usuario_telefone || '',
-        servico_nome: item.servico_nome,
-        servico_tipo: item.servico_tipo,
-        preco: item.preco || 0,
-        tempo_estimado: item.tempo_estimado,
-        data_agendamento: item.data,
-        tempo_inicio: item.tempo_inicio,
-        presente: item.presente,
-        posicao: item.posicao,
-        forma_pagamento: item.forma_pagamento || 'Presencial',
-        funcionario_nome: item.funcionario_nome || 'Funcionário',
-        
-        // Dados do cancelamento
-        data_cancelamento: new Date(),
-        motivo_cancelamento: 'Cancelado pela administração',
-        status_original: item.status,
-        timestamp_original: item.timestamp
+        ...agendamentoData,  // Copia TODOS os dados da fila
+        cancelado_em: new Date(),
+        cancelado_por: 'admin',
+        cancelamentos: (agendamentoData.cancelamentos || 0) + 1,
+        motivo_cancelamento: 'Cancelado pela administração'
       };
 
       // Primeiro salva na coleção de agendamentos cancelados

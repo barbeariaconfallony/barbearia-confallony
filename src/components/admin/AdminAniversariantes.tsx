@@ -212,6 +212,8 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
             return diffDays >= 0 && diffDays <= 15;
           case "mes":
             return diffDays >= 0 && diffDays <= 30;
+          case "ano":
+            return diffDays >= 0 && diffDays <= 365;
           default:
             return false;
         }
@@ -330,6 +332,7 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
               <SelectItem value="7dias">Próximos 7 dias</SelectItem>
               <SelectItem value="15dias">Próximos 15 dias</SelectItem>
               <SelectItem value="mes">Este Mês</SelectItem>
+              <SelectItem value="ano">Este Ano</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -344,7 +347,8 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
             <p className="text-sm text-muted-foreground">
               {filterPeriod === 'hoje' ? 'Hoje' : 
                filterPeriod === '7dias' ? 'Próximos 7 dias' : 
-               filterPeriod === '15dias' ? 'Próximos 15 dias' : 'Este mês'}
+               filterPeriod === '15dias' ? 'Próximos 15 dias' : 
+               filterPeriod === 'mes' ? 'Este mês' : 'Este ano'}
             </p>
           </CardContent>
         </Card>
@@ -523,7 +527,8 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
               {filterPeriod === 'hoje' ? 'Não há aniversários hoje.' :
                filterPeriod === '7dias' ? 'Não há aniversários nos próximos 7 dias.' :
                filterPeriod === '15dias' ? 'Não há aniversários nos próximos 15 dias.' :
-               'Não há aniversários este mês.'}
+               filterPeriod === 'mes' ? 'Não há aniversários este mês.' :
+               'Não há aniversários este ano.'}
             </p>
           </CardContent>
         </Card>

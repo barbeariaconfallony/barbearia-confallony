@@ -103,11 +103,40 @@ export const QueueAutomationProvider = ({ children }: { children: ReactNode }) =
     const now = new Date();
     
     try {
+      // Buscar dados atuais do agendamento
+      const filaDoc = await getDoc(doc(db, 'fila', currentlyServing.id));
+      const filaData = filaDoc.exists() ? filaDoc.data() : {};
+      
+      // Verificar se tem pagamento parcial
+      const temPagamentoParcial = filaData.pagamento_parcial === true;
+      const pagamentoParcialPago = filaData.pagamento_parcial === 'pago';
+
+      // Se tiver pagamento parcial pendente (true mas não "pago"), NÃO finalizar
+      if (temPagamentoParcial && !pagamentoParcialPago) {
+        console.log('⚠️ QueueContext: Agendamento com pagamento parcial pendente, mantendo na fila');
+        
+        await updateDoc(doc(db, 'fila', currentlyServing.id), {
+          status: 'em_atendimento', // Mantém em atendimento
+          tempo_fim: now,
+          alturas_corte: alturasCorte,
+          desconto_aplicado: atendimentoDesconto,
+          pagamento_parcial: 'aguardando pagamento parcial',
+        });
+
+        toast({
+          title: 'Aguardando pagamento ⏳',
+          description: 'Por favor, finalize o pagamento parcial antes de concluir o atendimento.',
+          variant: 'default',
+        });
+        return;
+      }
+
       // Atualiza o status na fila antes de finalizar
       await updateDoc(doc(db, 'fila', currentlyServing.id), {
         status: 'concluido',
         tempo_fim: now,
       });
+
 
       const completedAppointment = {
         ...currentlyServing,
@@ -122,6 +151,14 @@ export const QueueAutomationProvider = ({ children }: { children: ReactNode }) =
         funcionario_nome: currentlyServing.funcionario_nome || userData?.nome || 'Funcionário',
         servico_nome: currentlyServing.servico_nome,
         usuario_email: currentlyServing.usuario_email || '',
+        // Incluir dados de pagamento parcial se existir
+        ...(pagamentoParcialPago && {
+          pagamento_parcial: 'pago',
+          forma_pagamento_restante: filaData.forma_pagamento_restante,
+          payment_id_restante: filaData.payment_id_restante,
+          data_pagamento_restante: filaData.data_pagamento_restante,
+          status_restante: filaData.status_restante,
+        }),
       };
 
       console.log('💾 QueueContext: Salvando no Firestore:', completedAppointment);

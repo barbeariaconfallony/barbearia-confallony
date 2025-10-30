@@ -1170,6 +1170,7 @@ const Profile = () => {
       setSelectedAgendamento(null);
     }} agendamento={selectedAgendamento} onUpdate={() => {
       loadServicosPendentes();
+      setSelectedAgendamento(null);
     }} />}
 
       {/* Modal para reagendar agendamento */}

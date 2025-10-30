@@ -1,19 +1,34 @@
 project_id = "zhojnzbnjtpdeshkdwcb"
 
-[functions.create-pix-payment]
-verify_jwt = true
-
-[functions.check-payment-status]
-verify_jwt = true
-
-[functions.mercadopago-webhook]
+[functions.send-onesignal-notification]
 verify_jwt = false
 
 [functions.create-mercadopago-payment]
 verify_jwt = false
 
+[functions.mercadopago-webhook]
+verify_jwt = false
+
 [functions.get-mp-public-key]
 verify_jwt = false
 
+[functions.notify-admins-new-queue]
+verify_jwt = true
+
+[functions.send-push-notification]
+verify_jwt = true
+
+[functions.schedule-appointment-reminders]
+verify_jwt = false
+
+[functions.send-broadcast-notification]
+verify_jwt = true
+
 [functions.process-payment-queue]
+verify_jwt = false
+
+[functions.check-payment-status]
+verify_jwt = false
+
+[functions.create-pix-payment]
 verify_jwt = false
