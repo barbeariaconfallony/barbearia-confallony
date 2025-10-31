@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export const NotificationPermissionButton: React.FC = () => {
   const { currentUser } = useAuth();
-  const { permission, isSupported, isInitialized, domainError, requestPermission } = useOneSignalNative(currentUser?.uid);
+  const { permission, isSupported, isInitialized, domainError, requestPermission, isNative } = useOneSignalNative(currentUser?.uid);
 
   if (!isSupported) {
     return (
@@ -26,7 +26,7 @@ export const NotificationPermissionButton: React.FC = () => {
     );
   }
 
-  if (domainError) {
+  if (domainError && !isNative) {
     return (
       <Button variant="outline" size="sm" disabled className="flex items-center gap-2">
         <BellOff className="h-4 w-4" />

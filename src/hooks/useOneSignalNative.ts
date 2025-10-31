@@ -159,15 +159,36 @@ export const useOneSignalNative = (userId?: string) => {
               console.log('✅ OneSignal web inicializado com sucesso');
             } catch (error: any) {
               console.error('❌ Erro ao inicializar OneSignal web:', error);
-              
-              // Se o erro é de domínio ou SDK já inicializado, marcar como inicializado
-              // para não ficar tentando reinicializar
               const errorMsg = error?.message || '';
-              if (errorMsg.includes('Can only be used on') || errorMsg.includes('SDK already initialized')) {
-                console.warn('⚠️ Erro de configuração de domínio do OneSignal. Configure o domínio atual no dashboard do OneSignal.');
+
+              // Caso 1: Domínio não autorizado no OneSignal (Web)
+              if (errorMsg.includes('Can only be used on')) {
+                console.warn('⚠️ Domínio atual não está autorizado no OneSignal.');
                 setDomainError(true);
-                setIsInitialized(true); // Marcar como inicializado para não tentar novamente
+                setIsInitialized(true);
+                return;
               }
+
+              // Caso 2: SDK já inicializado (não é erro de domínio)
+              if (errorMsg.includes('SDK already initialized')) {
+                console.warn('ℹ️ OneSignal SDK já foi inicializado anteriormente.');
+                setDomainError(false);
+                setIsInitialized(true);
+                try {
+                  const currentPermission = await OneSignal.Notifications.permission;
+                  setPermission(currentPermission ? 'granted' : 'default');
+                  const currentPlayerId = await OneSignal.User.PushSubscription.id;
+                  if (currentPlayerId) {
+                    setPlayerId(currentPlayerId);
+                  }
+                } catch (stateErr) {
+                  console.warn('⚠️ Não foi possível obter estado do OneSignal após SDK já inicializado:', stateErr);
+                }
+                return;
+              }
+
+              // Outros erros
+              setIsInitialized(false);
             }
           });
         }
