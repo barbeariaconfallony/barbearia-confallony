@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export const NotificationPermissionButton: React.FC = () => {
   const { currentUser } = useAuth();
-  const { permission, isSupported, isInitialized, requestPermission } = useOneSignalNative(currentUser?.uid);
+  const { permission, isSupported, isInitialized, domainError, requestPermission } = useOneSignalNative(currentUser?.uid);
 
   if (!isSupported) {
     return (
@@ -22,6 +22,15 @@ export const NotificationPermissionButton: React.FC = () => {
       <Button variant="outline" size="sm" disabled className="flex items-center gap-2">
         <Bell className="h-4 w-4 animate-pulse" />
         Inicializando...
+      </Button>
+    );
+  }
+
+  if (domainError) {
+    return (
+      <Button variant="outline" size="sm" disabled className="flex items-center gap-2">
+        <BellOff className="h-4 w-4" />
+        Configure o domínio no OneSignal
       </Button>
     );
   }

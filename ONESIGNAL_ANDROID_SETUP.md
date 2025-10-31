@@ -28,7 +28,7 @@ npm install
 ### Passo 3: Adicionar plataforma Android
 
 ```bash
-
+npx cap add android
 ```
 
 ### Passo 4: Configurar Firebase Cloud Messaging (necessário para OneSignal)

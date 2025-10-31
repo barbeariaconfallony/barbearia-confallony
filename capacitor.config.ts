@@ -1,11 +1,11 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.lovable.barbearia', // Changed to valid format
+  appId: 'app.lovable.9f21f3e007444a039636b1edf0c1d6d2',
   appName: 'confa1-06266-73093',
   webDir: 'dist',
   server: {
-    url: 'https://9f21f3e0-0744-4a03-9636-b1edf0c1d6d2.lovableproject.com?forceHideBadge=true',
+    url: 'https://barbeariaconfallony.vercel.app?forceHideBadge=true',
     cleartext: true
   },
   plugins: {
