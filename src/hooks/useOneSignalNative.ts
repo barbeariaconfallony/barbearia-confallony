@@ -117,11 +117,12 @@ export const useOneSignalNative = (userId?: string) => {
             try {
               await OneSignal.init({
                 appId: "4121bac8-40b0-4967-b5dd-e2eab4d39832",
+                safari_web_id: "web.onesignal.auto.511f3fe8-4f38-4cfd-9441-4579acc1dc24",
                 allowLocalhostAsSecureOrigin: true,
                 serviceWorkerPath: '/OneSignalSDKWorker.js',
                 serviceWorkerParam: { scope: '/' },
                 notifyButton: {
-                  enable: false,
+                  enable: true,
                 },
               });
 
