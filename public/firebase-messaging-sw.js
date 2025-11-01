@@ -15,9 +15,9 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Handler para notificações em background (quando app está fechado)
+// Handler para notificações em background (quando app está fechado/minimizado)
 messaging.onBackgroundMessage((payload) => {
-  console.log('📩 Notificação recebida em background:', payload);
+  console.log('📩 [FCM Background] Notificação recebida:', payload);
 
   const notificationTitle = payload.notification?.title || payload.data?.title || 'Barbearia Confallony';
   const notificationOptions = {
@@ -28,49 +28,84 @@ messaging.onBackgroundMessage((payload) => {
     data: payload.data || {},
     tag: payload.data?.tag || 'default',
     requireInteraction: payload.data?.requireInteraction === 'true',
+    
+    // Configurações específicas para Android e Desktop
+    vibrate: [200, 100, 200], // Padrão de vibração
+    silent: false, // Garantir que o som seja reproduzido
+    renotify: true, // Notificar novamente se já existe uma com a mesma tag
+    timestamp: Date.now(),
+    
+    // Ações disponíveis na notificação
     actions: [
       {
         action: 'view',
-        title: 'Ver'
+        title: '👀 Ver',
+        icon: '/confallony-logo-icon.png'
       },
       {
         action: 'close',
-        title: 'Fechar'
+        title: '✖️ Fechar',
+        icon: '/favicon.png'
       }
     ]
   };
 
+  console.log('🔔 [FCM Background] Exibindo notificação:', notificationTitle);
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Handler para clique na notificação
+// Handler para clique na notificação (navegador web e Android)
 self.addEventListener('notificationclick', (event) => {
-  console.log('🖱️ Notificação clicada:', event);
+  console.log('🖱️ [FCM] Notificação clicada:', event.action, event.notification.tag);
   
+  // Fechar a notificação
   event.notification.close();
 
+  // Se o usuário clicou em "Fechar", não fazer nada
   if (event.action === 'close') {
+    console.log('✖️ [FCM] Usuário fechou a notificação');
     return;
   }
 
-  // Abrir ou focar na janela da aplicação
+  // Determinar URL de destino
   const urlToOpen = event.notification.data?.redirectTo 
     ? new URL(event.notification.data.redirectTo, self.location.origin).href
-    : new URL('/profile', self.location.origin).href;
+    : new URL('/profile-mobile', self.location.origin).href;
 
+  console.log('🌐 [FCM] Abrindo URL:', urlToOpen);
+
+  // Abrir ou focar na janela da aplicação
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((windowClients) => {
         // Verificar se já existe uma janela aberta
         for (let client of windowClients) {
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus();
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            console.log('✅ [FCM] Focando janela existente');
+            return client.focus().then(client => {
+              // Enviar mensagem para o cliente com a ação
+              return client.postMessage({
+                type: 'NOTIFICATION_CLICKED',
+                data: event.notification.data,
+                action: event.action
+              });
+            });
           }
         }
+        
         // Se não houver janela aberta, abrir uma nova
         if (clients.openWindow) {
+          console.log('🆕 [FCM] Abrindo nova janela');
           return clients.openWindow(urlToOpen);
         }
       })
+      .catch(error => {
+        console.error('❌ [FCM] Erro ao abrir janela:', error);
+      })
   );
+});
+
+// Handler para fechamento da notificação
+self.addEventListener('notificationclose', (event) => {
+  console.log('🔕 [FCM] Notificação fechada:', event.notification.tag);
 });

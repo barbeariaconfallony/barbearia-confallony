@@ -1,6 +1,6 @@
 import { useFCMToken } from './useFCMToken';
 import { toast } from 'sonner';
-import { getMessaging, getToken } from 'firebase/messaging';
+import { sendFCMPushNotification } from '@/utils/fcm-notification';
 
 const VAPID_KEY = 'BBqVtJQjExRq0ReZQAfYzMwPAv2Nkucmp8gZ1qoZlzAYlsUXMJ7Ut5JGhsiCREjfC7HmahgBqhADdKTBQ6iTZHs';
 
@@ -16,14 +16,9 @@ export const useCustomNotifications = (userId?: string) => {
   const { isSupported, fcmToken, requestPermissionAndGetToken } = useFCMToken(userId);
 
   const sendPushNotification = async (payload: NotificationPayload) => {
-    if (!isSupported || !fcmToken) {
-      console.log('⚠️ Notificações não suportadas ou token não disponível');
-      return;
-    }
-
     try {
-      // Exibir notificação local imediatamente
-      if ('Notification' in window && Notification.permission === 'granted') {
+      // 1. Exibir notificação local no navegador (se suportado)
+      if (isSupported && fcmToken && 'Notification' in window && Notification.permission === 'granted') {
         const notification = new Notification(payload.title, {
           body: payload.body,
           icon: payload.icon || '/confallony-logo-icon.png',
@@ -36,6 +31,19 @@ export const useCustomNotifications = (userId?: string) => {
         if (!payload.requireInteraction) {
           setTimeout(() => notification.close(), 5000);
         }
+      }
+
+      // 2. Enviar push notification via FCM (navegador + Android)
+      if (userId) {
+        await sendFCMPushNotification({
+          userId,
+          title: payload.title,
+          body: payload.body,
+          data: {
+            tag: payload.tag,
+            requireInteraction: payload.requireInteraction,
+          }
+        });
       }
     } catch (error) {
       console.error('❌ Erro ao enviar notificação:', error);
