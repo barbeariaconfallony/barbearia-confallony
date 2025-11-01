@@ -27,20 +27,39 @@ export const useOneSignalNative = (userId?: string) => {
   const [isSupported, setIsSupported] = useState(false);
   const isNative = Capacitor.isNativePlatform();
 
-  // Guard global para evitar múltiplas inicializações
-  const initStartedRef = useRef(false);
+  // Guard global para evitar múltiplas inicializações - usando window para ser realmente global
   const [domainError, setDomainError] = useState(false);
 
   // Inicializar OneSignal
   useEffect(() => {
     const initOneSignal = async () => {
-      // Prevenir múltiplas inicializações
-      if (initStartedRef.current) {
-        console.log('⚠️ OneSignal já está sendo inicializado, pulando...');
+      // Prevenir múltiplas inicializações usando window para ser verdadeiramente global
+      if ((window as any).__oneSignalInitializing || (window as any).__oneSignalInitialized) {
+        console.log('⚠️ OneSignal já está sendo inicializado ou já foi inicializado, pulando...');
+        
+        // Se já foi inicializado, apenas atualizar o estado local
+        if ((window as any).__oneSignalInitialized) {
+          setIsInitialized(true);
+          
+          // Tentar obter estado atual se for web
+          if (!isNative && window.OneSignal) {
+            try {
+              const currentPermission = await window.OneSignal.Notifications.permission;
+              setPermission(currentPermission ? 'granted' : 'default');
+              
+              const currentPlayerId = await window.OneSignal.User.PushSubscription.id;
+              if (currentPlayerId) {
+                setPlayerId(currentPlayerId);
+              }
+            } catch (e) {
+              console.warn('⚠️ Erro ao obter estado do OneSignal:', e);
+            }
+          }
+        }
         return;
       }
       
-      initStartedRef.current = true;
+      (window as any).__oneSignalInitializing = true;
       
       try {
         setIsSupported(true);
@@ -82,9 +101,12 @@ export const useOneSignalNative = (userId?: string) => {
             });
 
             console.log('✅ OneSignal nativo inicializado com sucesso');
+            (window as any).__oneSignalInitialized = true;
+            (window as any).__oneSignalInitializing = false;
           } else {
             console.warn('⚠️ Plugin OneSignal não encontrado');
             setIsInitialized(false);
+            (window as any).__oneSignalInitializing = false;
           }
         } else {
           // Inicialização para web (SDK JavaScript)
@@ -119,7 +141,7 @@ export const useOneSignalNative = (userId?: string) => {
                 appId: "4121bac8-40b0-4967-b5dd-e2eab4d39832",
                 safari_web_id: "web.onesignal.auto.511f3fe8-4f38-4cfd-9441-4579acc1dc24",
                 allowLocalhostAsSecureOrigin: true,
-                serviceWorkerPath: '/OneSignalSDKWorker.js',
+                serviceWorkerPath: '/OneSignalSDK.sw.js',
                 serviceWorkerParam: { scope: '/' },
                 notifyButton: {
                   enable: true,
@@ -158,15 +180,19 @@ export const useOneSignalNative = (userId?: string) => {
               }
 
               console.log('✅ OneSignal web inicializado com sucesso');
+              (window as any).__oneSignalInitialized = true;
+              (window as any).__oneSignalInitializing = false;
             } catch (error: any) {
               console.error('❌ Erro ao inicializar OneSignal web:', error);
               const errorMsg = error?.message || '';
+              (window as any).__oneSignalInitializing = false;
 
               // Caso 1: Domínio não autorizado no OneSignal (Web)
               if (errorMsg.includes('Can only be used on')) {
                 console.warn('⚠️ Domínio atual não está autorizado no OneSignal.');
                 setDomainError(true);
                 setIsInitialized(true);
+                (window as any).__oneSignalInitialized = true;
                 return;
               }
 
@@ -175,10 +201,11 @@ export const useOneSignalNative = (userId?: string) => {
                 console.warn('ℹ️ OneSignal SDK já foi inicializado anteriormente.');
                 setDomainError(false);
                 setIsInitialized(true);
+                (window as any).__oneSignalInitialized = true;
                 try {
-                  const currentPermission = await OneSignal.Notifications.permission;
+                  const currentPermission = await window.OneSignal.Notifications.permission;
                   setPermission(currentPermission ? 'granted' : 'default');
-                  const currentPlayerId = await OneSignal.User.PushSubscription.id;
+                  const currentPlayerId = await window.OneSignal.User.PushSubscription.id;
                   if (currentPlayerId) {
                     setPlayerId(currentPlayerId);
                   }
@@ -190,13 +217,14 @@ export const useOneSignalNative = (userId?: string) => {
 
               // Outros erros
               setIsInitialized(false);
+              (window as any).__oneSignalInitialized = false;
             }
           });
         }
       } catch (error) {
         console.error('❌ Erro ao inicializar OneSignal:', error);
         setIsInitialized(false);
-        // NÃO resetar initStartedRef para evitar múltiplas tentativas
+        (window as any).__oneSignalInitializing = false;
       }
     };
 

@@ -59,13 +59,35 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  // Buscar roles do Supabase
-  const loadUserRoles = async (userId: string) => {
+  // Buscar roles do Supabase usando Firebase UID (mapeamento via tabela profiles ou similar)
+  const loadUserRoles = async (firebaseUid: string) => {
     try {
+      // IMPORTANTE: Firebase UID não é UUID do Supabase
+      // Aqui você precisa mapear o Firebase UID para o Supabase UUID
+      // Por enquanto, vamos apenas tentar e capturar o erro
+      console.log('🔍 Buscando roles para Firebase UID:', firebaseUid);
+      
+      // TODO: Criar uma tabela de mapeamento firebase_uid -> supabase_uuid
+      // Por enquanto, desabilitando a busca de roles já que temos isAdmin no Firebase
+      setUserRoles([]);
+      return [];
+      
+      /* Quando implementar mapeamento, usar algo como:
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('firebase_uid', firebaseUid)
+        .single();
+      
+      if (profileError || !profileData) {
+        console.warn('Perfil não encontrado no Supabase para este usuário Firebase');
+        return [];
+      }
+      
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', userId);
+        .eq('user_id', profileData.id);
 
       if (error) {
         console.error('Erro ao buscar roles:', error);
@@ -75,6 +97,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const roles = data?.map(r => r.role) || [];
       setUserRoles(roles);
       return roles;
+      */
     } catch (error) {
       console.error('Erro ao buscar roles:', error);
       return [];

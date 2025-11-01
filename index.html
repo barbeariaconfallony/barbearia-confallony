@@ -25,24 +25,6 @@
     
     <!-- OneSignal SDK -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      window.OneSignalDeferred.push(async function(OneSignal) {
-        try {
-          await OneSignal.init({
-            appId: "4121bac8-40b0-4967-b5dd-e2eab4d39832",
-            safari_web_id: "web.onesignal.auto.511f3fe8-4f38-4cfd-9441-4579acc1dc24",
-            notifyButton: { enable: true },
-            serviceWorkerPath: '/OneSignalSDKWorker.js',
-            serviceWorkerParam: { scope: '/' },
-            allowLocalhostAsSecureOrigin: true,
-          });
-          console.log('✅ OneSignal (index.html) inicializado');
-        } catch (e) {
-          console.error('❌ OneSignal init (index.html) erro', e);
-        }
-      });
-    </script>
   </head>
 
   <body>
