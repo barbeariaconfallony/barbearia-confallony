@@ -6,7 +6,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { QueueAutomationProvider } from "./contexts/QueueAutomationContext";
 import { useTheme } from "./hooks/useTheme";
-import { useAutoRequestOneSignal } from "./hooks/useAutoRequestOneSignal";
+import { useAuth } from "./contexts/AuthContext";
+import { useInactivityNotification } from "./hooks/useInactivityNotification";
+import { useQueueReminders } from "./hooks/useQueueReminders";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import AdminRoute from "./components/auth/AdminRoute";
 import ScrollToTop from "./components/ScrollToTop";
@@ -34,8 +36,10 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const AppContent = () => {
+  const { currentUser } = useAuth();
   useTheme(); // Carrega e aplica o tema globalmente
-  useAutoRequestOneSignal(); // Solicita permissão para notificações OneSignal automaticamente
+  useInactivityNotification(currentUser); // Detecta inatividade e envia notificação
+  useQueueReminders(currentUser); // Envia lembretes periódicos da fila
 
   return (
     <>

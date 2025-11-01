@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useNotifications } from './useNotifications';
+import { useCustomNotifications } from './useCustomNotifications';
 import { useAuth } from '@/contexts/AuthContext';
 
 /**
@@ -7,21 +7,22 @@ import { useAuth } from '@/contexts/AuthContext';
  * quando o usuário abre o app pela primeira vez
  */
 export const useAutoRequestNotifications = () => {
-  const { permission, isSupported, requestPermission } = useNotifications();
   const { currentUser } = useAuth();
+  const { hasPermission, isSupported, requestPermission } = useCustomNotifications(currentUser?.uid);
   const hasRequestedRef = useRef(false);
 
   useEffect(() => {
     // Só executar se:
     // 1. Notificações são suportadas
     // 2. Usuário está autenticado
-    // 3. Permissão ainda não foi concedida nem negada
+    // 3. Permissão ainda não foi concedida
     // 4. Ainda não fizemos a requisição nesta sessão
     if (
       isSupported && 
       currentUser && 
-      permission === 'default' && 
-      !hasRequestedRef.current
+      !hasPermission &&
+      !hasRequestedRef.current &&
+      Notification.permission === 'default'
     ) {
       // Verificar localStorage para não perguntar repetidamente
       const hasAskedBefore = localStorage.getItem('notifications_asked');
@@ -38,7 +39,7 @@ export const useAutoRequestNotifications = () => {
             // Salvar que já perguntamos, independente da resposta
             localStorage.setItem('notifications_asked', 'true');
             
-            if (result === 'granted') {
+            if (result) {
               console.log('✅ Permissão para notificações concedida!');
             } else {
               console.log('❌ Permissão para notificações negada');
@@ -51,5 +52,5 @@ export const useAutoRequestNotifications = () => {
         return () => clearTimeout(timeoutId);
       }
     }
-  }, [isSupported, currentUser, permission, requestPermission]);
+  }, [isSupported, currentUser, hasPermission, requestPermission]);
 };

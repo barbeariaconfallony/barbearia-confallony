@@ -50,8 +50,8 @@ export const AdminBroadcastNotifications = () => {
 
       console.log(`📤 Enviando notificação para ${userIds.length} usuário(s)`);
 
-      // Enviar via OneSignal
-      const { data, error } = await supabase.functions.invoke('send-onesignal-notification', {
+      // Enviar via Firebase FCM
+      const { data, error } = await supabase.functions.invoke('send-push-notification', {
         body: {
           userIds: userIds,
           title: title,

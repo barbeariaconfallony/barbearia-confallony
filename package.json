@@ -62,7 +62,6 @@
     "next": "^15.5.0",
     "next-themes": "^0.3.0",
     "npm": "^11.5.2",
-    "onesignal-cordova-plugin": "^5.2.15",
     "pnpm": "^10.14.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",

@@ -19,19 +19,19 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('📩 Notificação recebida em background:', payload);
 
-  const notificationTitle = payload.notification?.title || payload.data?.title || 'Nova notificação';
+  const notificationTitle = payload.notification?.title || payload.data?.title || 'Barbearia Confallony';
   const notificationOptions = {
-    body: payload.notification?.body || payload.data?.body || '',
-    icon: payload.notification?.icon || payload.data?.icon || '/favicon.png',
-    badge: payload.notification?.badge || '/favicon.png',
+    body: payload.notification?.body || payload.data?.body || 'Nova notificação',
+    icon: '/confallony-logo-icon.png',
+    badge: '/favicon.png',
     image: payload.notification?.image || payload.data?.image,
     data: payload.data || {},
-    tag: payload.data?.type || 'default',
-    requireInteraction: false,
+    tag: payload.data?.tag || 'default',
+    requireInteraction: payload.data?.requireInteraction === 'true',
     actions: [
       {
-        action: 'open',
-        title: 'Ver Agendamento'
+        action: 'view',
+        title: 'Ver'
       },
       {
         action: 'close',

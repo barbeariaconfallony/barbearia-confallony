@@ -1,7 +1,8 @@
 import { corsHeaders } from '../_shared/cors.ts';
 
 interface PushNotificationPayload {
-  userId: string;
+  userIds?: string[]; // Array de user IDs
+  userId?: string; // ID único (para compatibilidade)
   title: string;
   body: string;
   data?: Record<string, any>;
@@ -26,7 +27,7 @@ async function sendFCMNotification(token: string, payload: {
     notification: {
       title: payload.title,
       body: payload.body,
-      icon: '/favicon.png',
+      icon: '/confallony-logo-icon.png',
       badge: '/favicon.png',
       ...(payload.imageUrl && { image: payload.imageUrl }),
       sound: 'default',
@@ -78,14 +79,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { userId, title, body, data, imageUrl }: PushNotificationPayload = await req.json();
+    const { userIds, userId, title, body, data, imageUrl }: PushNotificationPayload = await req.json();
 
-    if (!userId || !title || !body) {
+    // Aceitar tanto userId único quanto array de userIds
+    const targetUserIds = userIds || (userId ? [userId] : []);
+
+    if (targetUserIds.length === 0 || !title || !body) {
       return new Response(
-        JSON.stringify({ error: 'userId, title e body são obrigatórios' }),
+        JSON.stringify({ error: 'userId/userIds, title e body são obrigatórios' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`📤 Enviando notificação para ${targetUserIds.length} usuário(s)...`);
 
     // Buscar tokens FCM do usuário no Firebase
     const FIREBASE_PROJECT_ID = Deno.env.get('FIREBASE_PROJECT_ID');
@@ -95,41 +101,69 @@ Deno.serve(async (req) => {
       throw new Error('Credenciais do Firebase não configuradas');
     }
 
-    // Buscar tokens do Firestore
-    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/device_tokens`;
-    
-    const tokensResponse = await fetch(
-      `${firestoreUrl}?pageSize=100&orderBy=userId&where=userId=${userId}`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${FIREBASE_API_KEY}`,
-        },
-      }
-    );
+    let allTokens: string[] = [];
 
-    if (!tokensResponse.ok) {
-      throw new Error('Erro ao buscar tokens do usuário');
+    // Buscar tokens para cada usuário
+    for (const uid of targetUserIds) {
+      try {
+        // Buscar tokens do Firestore usando a REST API
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
+        
+        const queryPayload = {
+          structuredQuery: {
+            from: [{ collectionId: 'device_tokens' }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: 'userId' },
+                op: 'EQUAL',
+                value: { stringValue: uid }
+              }
+            }
+          }
+        };
+
+        const tokensResponse = await fetch(firestoreUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(queryPayload)
+        });
+
+        if (!tokensResponse.ok) {
+          console.error(`❌ Erro ao buscar tokens do usuário ${uid}`);
+          continue;
+        }
+
+        const tokensData = await tokensResponse.json();
+        const userTokens = tokensData
+          .filter((item: any) => item.document)
+          .map((item: any) => item.document.fields.token.stringValue);
+        
+        allTokens = [...allTokens, ...userTokens];
+        console.log(`✅ ${userTokens.length} token(s) encontrado(s) para usuário ${uid}`);
+      } catch (error) {
+        console.error(`❌ Erro ao buscar tokens do usuário ${uid}:`, error);
+      }
     }
 
-    const tokensData = await tokensResponse.json();
-    const tokens = tokensData.documents?.map((doc: any) => 
-      doc.fields.token.stringValue
-    ) || [];
-
-    if (tokens.length === 0) {
+    if (allTokens.length === 0) {
+      console.log('⚠️ Nenhum token encontrado');
       return new Response(
         JSON.stringify({ 
           success: false, 
-          message: 'Nenhum token encontrado para este usuário' 
+          message: 'Nenhum token encontrado para os usuários',
+          recipients: 0
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Enviar notificação para todos os tokens do usuário
+    console.log(`📨 Enviando para ${allTokens.length} dispositivo(s)...`);
+
+    // Enviar notificação para todos os tokens
     const results = await Promise.allSettled(
-      tokens.map((token: string) => 
+      allTokens.map((token: string) => 
         sendFCMNotification(token, { title, body, data, imageUrl })
       )
     );
@@ -137,12 +171,16 @@ Deno.serve(async (req) => {
     const successCount = results.filter(r => r.status === 'fulfilled').length;
     const failureCount = results.filter(r => r.status === 'rejected').length;
 
+    console.log(`✅ Enviado com sucesso: ${successCount}`);
+    console.log(`❌ Falhas: ${failureCount}`);
+
     return new Response(
       JSON.stringify({
         success: true,
         sent: successCount,
         failed: failureCount,
-        totalTokens: tokens.length,
+        recipients: successCount,
+        totalTokens: allTokens.length,
       }),
       { 
         status: 200, 

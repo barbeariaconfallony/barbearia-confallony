@@ -1,12 +1,12 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Bell, BellOff } from 'lucide-react';
-import { useOneSignalNative } from '@/hooks/useOneSignalNative';
+import { useFCMToken } from '@/hooks/useFCMToken';
 import { useAuth } from '@/contexts/AuthContext';
 
 export const NotificationPermissionButton: React.FC = () => {
   const { currentUser } = useAuth();
-  const { permission, isSupported, isInitialized, domainError, requestPermission, isNative } = useOneSignalNative(currentUser?.uid);
+  const { isSupported, loading, fcmToken, requestPermissionAndGetToken } = useFCMToken(currentUser?.uid);
 
   if (!isSupported) {
     return (
@@ -17,7 +17,7 @@ export const NotificationPermissionButton: React.FC = () => {
     );
   }
 
-  if (!isInitialized) {
+  if (loading) {
     return (
       <Button variant="outline" size="sm" disabled className="flex items-center gap-2">
         <Bell className="h-4 w-4 animate-pulse" />
@@ -26,39 +26,20 @@ export const NotificationPermissionButton: React.FC = () => {
     );
   }
 
-  if (domainError && !isNative) {
-    return (
-      <Button variant="outline" size="sm" disabled className="flex items-center gap-2">
-        <BellOff className="h-4 w-4" />
-        Configure o domínio no OneSignal
-      </Button>
-    );
-  }
-
   const handleRequestPermission = async () => {
-    await requestPermission();
+    await requestPermissionAndGetToken();
   };
 
   const getButtonText = () => {
-    switch (permission) {
-      case 'granted':
-        return 'Notificações Ativadas';
-      case 'denied':
-        return 'Notificações Bloqueadas';
-      default:
-        return 'Ativar Notificações';
-    }
+    if (fcmToken) return 'Notificações Ativadas';
+    if (Notification.permission === 'denied') return 'Notificações Bloqueadas';
+    return 'Ativar Notificações';
   };
 
   const getButtonVariant = () => {
-    switch (permission) {
-      case 'granted':
-        return 'default' as const;
-      case 'denied':
-        return 'destructive' as const;
-      default:
-        return 'outline' as const;
-    }
+    if (fcmToken) return 'default' as const;
+    if (Notification.permission === 'denied') return 'destructive' as const;
+    return 'outline' as const;
   };
 
   return (
@@ -66,10 +47,10 @@ export const NotificationPermissionButton: React.FC = () => {
       variant={getButtonVariant()}
       size="sm"
       onClick={handleRequestPermission}
-      disabled={permission === 'granted'}
+      disabled={!!fcmToken || loading}
       className="flex items-center gap-2"
     >
-      {permission === 'granted' ? (
+      {fcmToken ? (
         <Bell className="h-4 w-4" />
       ) : (
         <BellOff className="h-4 w-4" />

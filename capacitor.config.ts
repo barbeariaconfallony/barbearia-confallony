@@ -16,9 +16,6 @@ const config: CapacitorConfig = {
       smallIcon: 'ic_stat_icon_config_sample',
       iconColor: '#488AFF',
       sound: 'beep.wav'
-    },
-    OneSignal: {
-      appId: '4121bac8-40b0-4967-b5dd-e2eab4d39832'
     }
   }
 };

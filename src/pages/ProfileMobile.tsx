@@ -2182,11 +2182,11 @@ const ProfileMobile = () => {
                       try {
                         const { supabase } = await import('@/integrations/supabase/client');
                         
-                        const { data, error } = await supabase.functions.invoke('send-onesignal-notification', {
+                        const { data, error } = await supabase.functions.invoke('send-push-notification', {
                           body: {
                             userIds: [currentUser.uid],
                             title: '🔔 Notificação de Teste',
-                            message: 'Esta é uma notificação de teste do sistema OneSignal!',
+                            message: 'Esta é uma notificação de teste do sistema Firebase!',
                             data: { type: 'test' }
                           }
                         });
