@@ -55,7 +55,7 @@ export const AdminBroadcastNotifications = () => {
         body: {
           userIds: userIds,
           title: title,
-          message: message,
+          body: message,
           data: { type: 'broadcast', adminId: userData.uid }
         }
       });

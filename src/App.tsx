@@ -9,6 +9,7 @@ import { useTheme } from "./hooks/useTheme";
 import { useAuth } from "./contexts/AuthContext";
 import { useInactivityNotification } from "./hooks/useInactivityNotification";
 import { useQueueReminders } from "./hooks/useQueueReminders";
+import { FCMInitializer } from "./components/FCMInitializer";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import AdminRoute from "./components/auth/AdminRoute";
 import ScrollToTop from "./components/ScrollToTop";
@@ -31,6 +32,7 @@ import PaymentPending from "./pages/PaymentPending";
 import Produtos from "./pages/Produtos";
 import ProfileMobile from "./pages/ProfileMobile";
 import PixPagamento from "./pages/PixPagamento";
+import FCMDiagnostico from "./pages/FCMDiagnostico";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +45,7 @@ const AppContent = () => {
 
   return (
     <>
+      <FCMInitializer />
       <Toaster />
       <Sonner />
       <BrowserRouter>
@@ -137,6 +140,11 @@ const AppContent = () => {
             <Route path="/pagamento/pix" element={
               <ProtectedRoute>
                 <PixPagamento />
+              </ProtectedRoute>
+            } />
+            <Route path="/fcm-diagnostico" element={
+              <ProtectedRoute>
+                <FCMDiagnostico />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

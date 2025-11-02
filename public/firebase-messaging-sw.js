@@ -1,9 +1,14 @@
-// Firebase Messaging Service Worker
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+// Firebase Messaging Service Worker (v12.1.0 - aligned with main app)
+importScripts('https://www.gstatic.com/firebasejs/12.1.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.1.0/firebase-messaging-compat.js');
+
+// Detectar ambiente automaticamente
+const currentDomain = self.location.hostname;
+console.log('🌐 [FCM SW] Service Worker carregado no domínio:', currentDomain);
+console.log('🌐 [FCM SW] URL completa:', self.location.href);
 
 // Configuração do Firebase (mesma do projeto)
-firebase.initializeApp({
+const firebaseConfig = {
   apiKey: "AIzaSyBIVVXaxM-yPYRELT_ZWgRuT0Kcd5dbp6c",
   authDomain: "barbearia-confallony.firebaseapp.com",
   projectId: "barbearia-confallony",
@@ -11,7 +16,16 @@ firebase.initializeApp({
   messagingSenderId: "206443720437",
   appId: "1:206443720437:web:4d1fcaacbf1958a7711fbc",
   measurementId: "G-K24DQ1FXZ8"
-});
+};
+
+console.log('🔧 [FCM SW] Inicializando Firebase com config:', firebaseConfig);
+
+try {
+  firebase.initializeApp(firebaseConfig);
+  console.log('✅ [FCM SW] Firebase inicializado com sucesso');
+} catch (error) {
+  console.error('❌ [FCM SW] Erro ao inicializar Firebase:', error);
+}
 
 const messaging = firebase.messaging();
 

@@ -2186,7 +2186,7 @@ const ProfileMobile = () => {
                           body: {
                             userIds: [currentUser.uid],
                             title: '🔔 Notificação de Teste',
-                            message: 'Esta é uma notificação de teste do sistema Firebase!',
+                            body: 'Esta é uma notificação de teste do sistema Firebase!',
                             data: { type: 'test' }
                           }
                         });
