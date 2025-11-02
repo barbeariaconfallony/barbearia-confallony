@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
 import { getToken, onMessage } from 'firebase/messaging';
-import { doc, setDoc, collection } from 'firebase/firestore';
+import { doc, setDoc, collection, getDoc } from 'firebase/firestore';
 import { db, messaging } from '@/lib/firebase';
 import { Capacitor } from '@capacitor/core';
 import { toast } from 'sonner';
-
-// VAPID Key do Firebase Console (Cloud Messaging -> Web Push certificates)
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BBqVtJQjExRq0ReZQAfYzMwPAv2Nkucmp8gZ1qoZlzAYlsUXMJ7Ut5JGhsiCREjfC7HmahgBqhADdKTBQ6iTZHs';
 
 export const useFCMToken = (userId?: string) => {
   const [fcmToken, setFcmToken] = useState<string | null>(null);
@@ -18,6 +15,30 @@ export const useFCMToken = (userId?: string) => {
     const isWeb = !Capacitor.isNativePlatform();
     setIsSupported(isWeb && 'Notification' in window && 'serviceWorker' in navigator);
   }, []);
+
+  const getVapidKey = async (): Promise<string> => {
+    try {
+      const configRef = doc(db, 'fcm_config', 'main');
+      const configSnap = await getDoc(configRef);
+      
+      if (configSnap.exists()) {
+        const data = configSnap.data();
+        if (data.vapidKey) {
+          console.log('✅ VAPID Key carregada do Firestore');
+          return data.vapidKey;
+        }
+      }
+      
+      // Fallback para variável de ambiente
+      const envKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BBqVtJQjExRq0ReZQAfYzMwPAv2Nkucmp8gZ1qoZlzAYlsUXMJ7Ut5JGhsiCREjfC7HmahgBqhADdKTBQ6iTZHs';
+      console.log('⚠️ Usando VAPID Key do .env (fallback)');
+      return envKey;
+    } catch (error) {
+      console.error('❌ Erro ao buscar VAPID Key:', error);
+      // Fallback para variável de ambiente
+      return import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BBqVtJQjExRq0ReZQAfYzMwPAv2Nkucmp8gZ1qoZlzAYlsUXMJ7Ut5JGhsiCREjfC7HmahgBqhADdKTBQ6iTZHs';
+    }
+  };
 
   const saveFCMToken = async (token: string, userId: string) => {
     try {
@@ -87,6 +108,10 @@ export const useFCMToken = (userId?: string) => {
         setLoading(false);
         return null;
       }
+
+      // Buscar VAPID Key do Firestore
+      const VAPID_KEY = await getVapidKey();
+      console.log('🔑 [FCM] VAPID Key:', VAPID_KEY.substring(0, 20) + '...');
 
       // Tentar obter token com retry e fallback
       let token: string | null = null;

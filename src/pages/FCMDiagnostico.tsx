@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -13,10 +15,13 @@ import {
   RefreshCw,
   Send,
   Copy,
-  AlertTriangle
+  AlertTriangle,
+  Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export default function FCMDiagnostico() {
   const { currentUser } = useAuth();
@@ -25,10 +30,61 @@ export default function FCMDiagnostico() {
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [resetting, setResetting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [vapidKey, setVapidKey] = useState('');
+  const [privateKey, setPrivateKey] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     checkServiceWorkerState();
+    loadFCMConfig();
   }, []);
+
+  const loadFCMConfig = async () => {
+    try {
+      const configRef = doc(db, 'fcm_config', 'main');
+      const configSnap = await getDoc(configRef);
+      
+      if (configSnap.exists()) {
+        const data = configSnap.data();
+        setVapidKey(data.vapidKey || '');
+        setPrivateKey(data.privateKey || '');
+        console.log('✅ Configuração FCM carregada do Firestore');
+      } else {
+        // Usar valores padrão do .env
+        const defaultVapid = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BBqVtJQjExRq0ReZQAfYzMwPAv2Nkucmp8gZ1qoZlzAYlsUXMJ7Ut5JGhsiCREjfC7HmahgBqhADdKTBQ6iTZHs';
+        setVapidKey(defaultVapid);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar configuração FCM:', error);
+      toast.error('Erro ao carregar configuração FCM');
+    }
+  };
+
+  const saveFCMConfig = async () => {
+    if (!vapidKey.trim()) {
+      toast.error('VAPID Key é obrigatória');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const configRef = doc(db, 'fcm_config', 'main');
+      await setDoc(configRef, {
+        vapidKey: vapidKey.trim(),
+        privateKey: privateKey.trim(),
+        updatedAt: new Date(),
+        updatedBy: currentUser?.uid || 'unknown'
+      });
+
+      toast.success('Configuração FCM salva com sucesso!');
+      console.log('✅ Configuração FCM salva no Firestore');
+    } catch (error) {
+      console.error('Erro ao salvar configuração FCM:', error);
+      toast.error('Erro ao salvar configuração FCM');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const checkServiceWorkerState = async () => {
     try {
@@ -115,10 +171,6 @@ export default function FCMDiagnostico() {
     toast.success('Copiado para área de transferência');
   };
 
-  const getVapidKey = () => {
-    const key = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'BBqVtJQjExRq0ReZQAfYzMwPAv2Nkucmp8gZ1qoZlzAYlsUXMJ7Ut5JGhsiCREjfC7HmahgBqhADdKTBQ6iTZHs';
-    return key;
-  };
 
   const StatusBadge = ({ condition, label }: { condition: boolean; label: string }) => (
     <div className="flex items-center gap-2">
@@ -212,50 +264,77 @@ export default function FCMDiagnostico() {
           </CardContent>
         </Card>
 
-        {/* Configuração */}
+        {/* Configuração FCM */}
         <Card>
           <CardHeader>
-            <CardTitle>Configuração Firebase</CardTitle>
-            <CardDescription>Chaves e tokens</CardDescription>
+            <CardTitle>Configuração Firebase Cloud Messaging</CardTitle>
+            <CardDescription>Configure as chaves VAPID e Private Key do FCM</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">VAPID Key (primeiros 30 caracteres)</label>
+              <Label htmlFor="vapidKey">VAPID Key (Chave Pública)</Label>
+              <Input
+                id="vapidKey"
+                value={vapidKey}
+                onChange={(e) => setVapidKey(e.target.value)}
+                placeholder="Cole sua VAPID Key aqui..."
+                className="font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Encontre em Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="privateKey">Private Key (Chave Privada)</Label>
+              <Input
+                id="privateKey"
+                type="password"
+                value={privateKey}
+                onChange={(e) => setPrivateKey(e.target.value)}
+                placeholder="Cole sua Private Key aqui..."
+                className="font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                Esta chave é usada no backend (opcional para uso local)
+              </p>
+            </div>
+
+            <Button 
+              onClick={saveFCMConfig}
+              disabled={saving || !vapidKey.trim()}
+              className="w-full"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Salvando...' : 'Salvar Configuração'}
+            </Button>
+
+          </CardContent>
+        </Card>
+
+        {/* Token Atual */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Token FCM Gerado</CardTitle>
+            <CardDescription>Token do dispositivo atual</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {fcmToken ? (
               <div className="flex gap-2">
                 <code className="flex-1 p-2 bg-muted rounded text-xs break-all">
-                  {getVapidKey().substring(0, 30)}...
+                  {fcmToken.substring(0, 50)}...
                 </code>
                 <Button 
                   variant="outline" 
                   size="icon"
-                  onClick={() => copyToClipboard(getVapidKey())}
+                  onClick={() => copyToClipboard(fcmToken)}
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">FCM Token</label>
-              {fcmToken ? (
-                <div className="flex gap-2">
-                  <code className="flex-1 p-2 bg-muted rounded text-xs break-all">
-                    {fcmToken.substring(0, 50)}...
-                  </code>
-                  <Button 
-                    variant="outline" 
-                    size="icon"
-                    onClick={() => copyToClipboard(fcmToken)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Nenhum token gerado ainda</p>
-              )}
-            </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhum token gerado ainda</p>
+            )}
           </CardContent>
         </Card>
 
