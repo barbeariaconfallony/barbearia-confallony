@@ -28,7 +28,6 @@ import { AdminAniversariantes } from "@/components/admin/AdminAniversariantes";
 import { AdminFotos } from "@/components/admin/AdminFotos";
 import { AdminConfigAgendamento } from "@/components/admin/AdminConfigAgendamento";
 import { AdminConfigMobile } from "@/components/admin/AdminConfigMobile";
-import { AdminBroadcastNotifications } from "@/components/admin/AdminBroadcastNotifications";
 import ProductManagement from "@/pages/ProductManagement";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { useFirebaseMonitoring } from "@/hooks/useFirebaseMonitoring";
@@ -453,7 +452,7 @@ const Admin = () => {
       
       const topClientesRecorrentes = Object.values(clienteContagem)
         .sort((a, b) => b.quantidade - a.quantidade)
-        .slice(0, 10);
+        .slice(0, 200); // Aumentado para 200 para permitir mais opções na UI
 
       // Calcular crescimento por período (comparar com período anterior de mesma duração)
       const periodoDias = Math.ceil((periodEndDate.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -1133,7 +1132,6 @@ const Admin = () => {
               <TabsTrigger value="mobile" className="text-xs sm:text-sm">Mobile</TabsTrigger>
               <TabsTrigger value="reports" className="text-xs sm:text-sm">Relatórios</TabsTrigger>
               <TabsTrigger value="database" className="text-xs sm:text-sm">Banco</TabsTrigger>
-              <TabsTrigger value="notifications" className="text-xs sm:text-sm">Notificações</TabsTrigger>
             </TabsList>
 
             <TabsContent value="dashboard" className="space-y-6 mt-6">
@@ -2254,10 +2252,7 @@ const Admin = () => {
               </div>
             </TabsContent>
 
-            {/* Aba Notificações */}
-            <TabsContent value="notifications" className="space-y-6 mt-6">
-              <AdminBroadcastNotifications />
-            </TabsContent>
+            {/* Aba Notificações - Removida */}
 
           </Tabs>
         </div>

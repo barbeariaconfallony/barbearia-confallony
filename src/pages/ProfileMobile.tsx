@@ -7,7 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { User, Calendar, History, Settings, Award, Wallet, Phone, Mail, LogOut, CheckCircle, ShoppingCart, Palette, CreditCard, Banknote, Clock, Plus, MapPin, Timer, Check, AlertTriangle, X, QrCode, Download, TrendingUp, Filter, DollarSign, BarChart3, Star, Crown, Zap, Bell, Receipt, Camera, Upload, Eye, Image as ImageIcon, Pencil, Gift, Percent, RefreshCw, XCircle } from "lucide-react";
+import { User, Calendar, History, Settings, Award, Wallet, Phone, Mail, LogOut, CheckCircle, ShoppingCart, Palette, CreditCard, Banknote, Clock, Plus, MapPin, Timer, Check, AlertTriangle, X, QrCode, Download, TrendingUp, Filter, DollarSign, BarChart3, Star, Crown, Zap, Bell, Receipt, Camera, Upload, Eye, Image as ImageIcon, Pencil, Gift, Percent, RefreshCw, XCircle, MessageCircle, Lock, IdCard } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,19 +20,18 @@ import { format, isFuture, isToday, differenceInSeconds, isBefore, addMinutes, s
 import { ptBR } from "date-fns/locale";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import maleProfileAvatar from "@/assets/male-profile-avatar.jpg";
-import logoMain from '@/assets/confallony-logo-main.png';
+import logoMain from '@/assets/confallony-logo-new.png';
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { generateReceipt, downloadReceipt } from "@/utils/receipt-generator";
 import { QuickBookingCard } from "@/components/QuickBookingCard";
 import { AgendamentoReminderConfig } from "@/components/AgendamentoReminderConfig";
 import { AddToCalendarButton } from "@/components/AddToCalendarButton";
-import { NotificationPermissionButton } from "@/components/NotificationPermissionButton";
 import { UltimosAgendamentos } from "@/components/UltimosAgendamentos";
 import { AvaliacaoModal } from "@/components/AvaliacaoModal";
 import { useCameraCapture } from "@/hooks/useCameraCapture";
-import { useAppointmentReminders } from "@/hooks/useAppointmentReminders";
 import { useNotifications } from "@/hooks/useNotifications";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useConfigMobile } from "@/hooks/useConfigMobile";
 interface QueueItem {
   id: string;
@@ -387,12 +387,10 @@ const CountdownTimer = ({
         {String(timeLeft.minutes).padStart(2, '0')}:
         {String(timeLeft.seconds).padStart(2, '0')} para o início do atendimento.
       </p>
-      {pagamentoParcial && (
-        <p className="text-xs text-amber-600 font-medium mt-2 flex items-center gap-1">
+      {pagamentoParcial && <p className="text-xs text-amber-600 font-medium mt-2 flex items-center gap-1">
           <Wallet className="h-3 w-3" />
           Pague o restante após a conclusão do serviço na barbearia.
-        </p>
-      )}
+        </p>}
       <p className="text-xs text-muted-foreground mt-3">Obrigado pela preferência, estamos te aguardando!</p>
     </div>;
 };
@@ -400,7 +398,8 @@ const ProfileMobile = () => {
   const {
     currentUser,
     userData,
-    logout
+    logout,
+    updateUserData
   } = useAuth();
   const {
     queueData,
@@ -414,7 +413,7 @@ const ProfileMobile = () => {
   const [activeTab, setActiveTab] = useState("perfil");
   const [historicoSubTab, setHistoricoSubTab] = useState<"agendamentos_pendentes" | "agendamentos_finalizados" | "agendamentos_cancelados" | "comandas_abertas" | "comandas_finalizadas">("agendamentos_pendentes");
   const [filtroMetodo, setFiltroMetodo] = useState<string>("todos");
-  const [filtroPeriodo, setFiltroPeriodo] = useState<"mensal" | "anual">("mensal");
+  const [filtroPeriodo, setFiltroPeriodo] = useState<"mensal" | "anual" | "geral">("mensal");
   const [filtroDataInicio, setFiltroDataInicio] = useState<Date | null>(null);
   const [filtroDataFim, setFiltroDataFim] = useState<Date | null>(null);
   const [agendamentos, setAgendamentos] = useState<QueueItem[]>([]);
@@ -432,6 +431,8 @@ const ProfileMobile = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [reagendamentoModalOpen, setReagendamentoModalOpen] = useState(false);
   const [selectedAgendamento, setSelectedAgendamento] = useState<QueueItem | null>(null);
+  const [reembolsoModalOpen, setReembolsoModalOpen] = useState(false);
+  const [agendamentoCancelado, setAgendamentoCancelado] = useState<QueueItem | null>(null);
   const [avaliacaoModalOpen, setAvaliacaoModalOpen] = useState(false);
   const [agendamentoParaAvaliar, setAgendamentoParaAvaliar] = useState<QueueItem | null>(null);
   const [agendamentosNaoAvaliados, setAgendamentosNaoAvaliados] = useState<AtendimentoConcluido[]>([]);
@@ -439,12 +440,152 @@ const ProfileMobile = () => {
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [changeAvatarModalOpen, setChangeAvatarModalOpen] = useState(false);
   const [viewImageModalOpen, setViewImageModalOpen] = useState(false);
+  const [mesDetalheOpen, setMesDetalheOpen] = useState(false);
+  const [mesSelecionado, setMesSelecionado] = useState<{
+    mes: string;
+    monthStart: Date;
+    monthEnd: Date;
+  } | null>(null);
+
+  // Estados para edição de perfil
+  const [editMode, setEditMode] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [formData, setFormData] = useState({
+    nome: userData?.nome || "",
+    telefone: userData?.telefone || "",
+    cpf: userData?.cpf || ""
+  });
+
+  // Atualizar formData quando userData mudar
+  useEffect(() => {
+    if (userData) {
+      setFormData({
+        nome: userData.nome || "",
+        telefone: userData.telefone || "",
+        cpf: userData.cpf || ""
+      });
+    }
+  }, [userData]);
+
+  // Funções de formatação
+  const formatCPF = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 11) {
+      return numbers.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    }
+    return value;
+  };
+  const formatPhone = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 11) {
+      return numbers.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{1})(\d{4})(\d)/, '$1 $2-$3');
+    }
+    return value;
+  };
+  const formatDate = (value: string) => {
+    const numbers = value.replace(/\D/g, '');
+    if (numbers.length <= 8) {
+      return numbers.replace(/(\d{2})(\d)/, '$1/$2').replace(/(\d{2})(\d)/, '$1/$2');
+    }
+    return value;
+  };
+
+  // Funções de validação
+  const validateCPF = (cpf: string) => {
+    const numbers = cpf.replace(/\D/g, '');
+    return numbers.length === 11;
+  };
+  const validatePhone = (phone: string) => {
+    const numbers = phone.replace(/\D/g, '');
+    return numbers.length === 10 || numbers.length === 11;
+  };
+  const validateDate = (date: string) => {
+    const numbers = date.replace(/\D/g, '');
+    if (numbers.length !== 8) return false;
+    const day = parseInt(numbers.substring(0, 2));
+    const month = parseInt(numbers.substring(2, 4));
+    const year = parseInt(numbers.substring(4, 8));
+    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > 31) return false;
+    if (year < 1900 || year > new Date().getFullYear()) return false;
+    return true;
+  };
+
+  // Função de atualização de perfil
+  const handleUpdateProfile = async () => {
+    // Validações
+    if (!formData.nome || formData.nome.trim().length < 3) {
+      toast({
+        title: "Nome inválido",
+        description: "O nome deve ter pelo menos 3 caracteres",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (formData.telefone && !validatePhone(formData.telefone)) {
+      toast({
+        title: "Telefone inválido",
+        description: "Digite um telefone válido no formato (XX) XXXXX-XXXX",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (formData.cpf && !validateCPF(formData.cpf)) {
+      toast({
+        title: "CPF inválido",
+        description: "Digite um CPF válido no formato XXX.XXX.XXX-XX",
+        variant: "destructive"
+      });
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      // Atualizar dados usando a função do AuthContext
+      await updateUserData({
+        nome: formData.nome.trim(),
+        telefone: formData.telefone,
+        cpf: formData.cpf
+      });
+      setEditMode(false);
+    } catch (error) {
+      console.error("Erro ao atualizar perfil:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Função para cancelar edição
+  const handleCancelEdit = () => {
+    setFormData({
+      nome: userData?.nome || "",
+      telefone: userData?.telefone || "",
+      cpf: userData?.cpf || ""
+    });
+    setEditMode(false);
+  };
 
   // Hook de configuração mobile
   const {
     config,
     loading: loadingConfig
   } = useConfigMobile();
+
+  // Função auxiliar para obter ícone de pagamento
+  const getPaymentIcon = (tipoPagamento: string) => {
+    const tipo = tipoPagamento?.toLowerCase() || '';
+    if (tipo.includes('pix')) {
+      return <QrCode className="h-3 w-3 text-blue-600" />;
+    } else if (tipo.includes('dinheiro')) {
+      return <Banknote className="h-3 w-3 text-green-600" />;
+    } else if (tipo.includes('crédito') || tipo.includes('credito')) {
+      return <CreditCard className="h-3 w-3 text-purple-600" />;
+    } else if (tipo.includes('débito') || tipo.includes('debito')) {
+      return <CreditCard className="h-3 w-3 text-orange-600" />;
+    } else if (tipo.includes('cartão') || tipo.includes('cartao')) {
+      return <CreditCard className="h-3 w-3 text-gray-600" />;
+    }
+    return <Wallet className="h-3 w-3 text-gray-600" />;
+  };
 
   // Hook de captura de câmera
   const {
@@ -461,12 +602,8 @@ const ProfileMobile = () => {
     switchCamera
   } = useCameraCapture();
 
-  // Agendar lembretes de agendamento (2h, 1h, 30min, 15min antes)
-  useAppointmentReminders(agendamentos);
-
-  // Hook de notificações com registro automático de token FCM
+  // Hook de notificações
   const {
-    fcmToken,
     permission: notificationPermission
   } = useNotifications(currentUser?.uid);
 
@@ -591,7 +728,7 @@ const ProfileMobile = () => {
             cancelado: data.cancelado || false,
             tempo_estimado: data.tempo_estimado || 30,
             pagamento_parcial: data.pagamento_parcial || false,
-            valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+            valor_restante: data.valor_parcial_restante ?? data.valor_restante ?? 0,
             valor_total: data.valor_total || 0,
             valor_pago: data.valor_pago || 0
           });
@@ -639,7 +776,7 @@ const ProfileMobile = () => {
             avaliacao: data.avaliacao
           };
           agendamentosFinalizadosItems.push(item);
-          
+
           // Adicionar aos não avaliados apenas se não estiver avaliado E não for duplicado
           if (!item.avaliado && !idsNaoAvaliados.has(item.id)) {
             idsNaoAvaliados.add(item.id);
@@ -778,7 +915,6 @@ const ProfileMobile = () => {
   const handleCancelarAgendamento = async (id: string) => {
     try {
       console.log('🚫 Iniciando cancelamento do agendamento:', id);
-      
       const agendamento = agendamentos.find(a => a.id === id);
       if (!agendamento) {
         console.log('❌ Agendamento não encontrado na lista local');
@@ -789,12 +925,10 @@ const ProfileMobile = () => {
       const agendamentoRef = doc(db, 'fila', id);
       console.log('📄 Buscando documento na fila...');
       const agendamentoSnap = await getDoc(agendamentoRef);
-
       if (!agendamentoSnap.exists()) {
         console.log('❌ Documento não existe na fila');
         throw new Error('Agendamento não encontrado na fila');
       }
-
       const agendamentoData = agendamentoSnap.data();
       console.log('✅ Dados do agendamento recuperados:', agendamentoData);
 
@@ -820,6 +954,9 @@ const ProfileMobile = () => {
       // Atualizar lista local removendo o agendamento
       setAgendamentos(prev => prev.filter(a => a.id !== id));
 
+      // Armazenar agendamento cancelado e abrir modal de reembolso
+      setAgendamentoCancelado(agendamento);
+      setReembolsoModalOpen(true);
       toast({
         title: "Agendamento cancelado",
         description: "Seu agendamento foi removido da fila e movido para cancelados.",
@@ -870,7 +1007,7 @@ const ProfileMobile = () => {
           sala_atendimento: data.sala_atendimento,
           forma_pagamento: data.forma_pagamento,
           pagamento_parcial: data.pagamento_parcial || false,
-          valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+          valor_restante: data.valor_parcial_restante ?? data.valor_restante ?? 0,
           valor_total: data.valor_total || 0,
           valor_pago: data.valor_pago || 0,
           editado: data.editado || false,
@@ -1022,7 +1159,12 @@ const ProfileMobile = () => {
             mes: format(month, 'MMM', {
               locale: ptBR
             }),
-            visitas: count
+            mesCompleto: format(month, 'MMMM yyyy', {
+              locale: ptBR
+            }),
+            visitas: count,
+            monthStart,
+            monthEnd
           };
         });
 
@@ -1162,15 +1304,15 @@ const ProfileMobile = () => {
                       </div>}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Zap className="h-3 w-3 text-yellow-600" />
-                      <span>{config.pontos_por_real} ponto(s) por R$ 1,00 gasto</span>
+                      <span>{config.pontos_por_real * 10} ponto(s) por R$ 10,00 gastos</span>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Card de Boas-vindas ao Programa (apenas se tiver poucos pontos) */}
-            {pontosTotal < config.pontos_bronze_prata / 2 && config.mensagem_boas_vindas && <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/30">
+            {/* Card de Boas-vindas ao Programa (apenas se não tiver pontos) */}
+            {pontosTotal === 0 && <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/30">
                 <CardContent className="pt-4 pb-4">
                   <div className="flex items-start gap-3">
                     <Gift className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
@@ -1179,7 +1321,7 @@ const ProfileMobile = () => {
                         Programa de Fidelidade
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {config.mensagem_boas_vindas}
+                        Bem-vindo ao nosso programa de fidelidade! A cada R$ 10,00 gastos, você ganha pontos.
                       </p>
                     </div>
                   </div>
@@ -1248,7 +1390,14 @@ const ProfileMobile = () => {
                   }} labelStyle={{
                     color: 'hsl(var(--foreground))'
                   }} />
-                    <Bar dataKey="visitas" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="visitas" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} isAnimationActive={false} cursor="pointer" onClick={(data: any) => {
+                    setMesSelecionado({
+                      mes: data.mesCompleto,
+                      monthStart: data.monthStart,
+                      monthEnd: data.monthEnd
+                    });
+                    setMesDetalheOpen(true);
+                  }} />
                   </BarChart>
                 </ResponsiveContainer>
 
@@ -1292,41 +1441,37 @@ const ProfileMobile = () => {
 
             {/* Agendamentos Pendentes ou em Atendimento */}
             {(() => {
-              // Filtrar agendamentos: não cancelados OU com pagamento parcial pendente
-              const agendamentosVisiveis = agendamentos.filter(agendamento => {
-                const cancelado = (agendamento as any).cancelado;
-                const pagamentoParcial = (agendamento as any).pagamento_parcial;
-                
-                // Se cancelado E NÃO tem pagamento parcial pendente, ocultar
-                if (cancelado && !pagamentoParcial) return false;
-                
-                // Se concluído E NÃO tem pagamento parcial pendente, ocultar
-                if (agendamento.status === 'concluido' && !pagamentoParcial) return false;
-                
-                return true;
-              });
-              
-              if (agendamentosVisiveis.length === 0) return null;
-              
-              const agendamentoEmAtendimento = agendamentosVisiveis.find(a => a.status === 'em_atendimento');
-              const titulo = agendamentoEmAtendimento ? 'Agendamento em Atendimento' : 'Agendamentos Pendentes';
-              
-              return <div className="space-y-3 mb-6">
+            // Filtrar agendamentos: não cancelados OU com pagamento parcial pendente
+            const agendamentosVisiveis = agendamentos.filter(agendamento => {
+              const cancelado = (agendamento as any).cancelado;
+              const pagamentoParcial = (agendamento as any).pagamento_parcial;
+
+              // Se cancelado E NÃO tem pagamento parcial pendente, ocultar
+              if (cancelado && !pagamentoParcial) return false;
+
+              // Se concluído E NÃO tem pagamento parcial pendente, ocultar
+              if (agendamento.status === 'concluido' && !pagamentoParcial) return false;
+              return true;
+            });
+            if (agendamentosVisiveis.length === 0) return null;
+            const agendamentoEmAtendimento = agendamentosVisiveis.find(a => a.status === 'em_atendimento');
+            const titulo = agendamentoEmAtendimento ? 'Agendamento em Atendimento' : 'Agendamentos Pendentes';
+            return <div className="space-y-3 mb-6">
                       <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                         <Clock className="h-4 w-4 text-primary" />
                         {titulo}
                       </h3>
                       {agendamentosVisiveis.map(agendamento => {
-                  const isInService = agendamento.status === 'em_atendimento';
-                  return <Card key={agendamento.id} className="bg-card/50 backdrop-blur border-primary/20 overflow-hidden">
+                const isInService = agendamento.status === 'em_atendimento';
+                return <Card key={agendamento.id} className="bg-card/50 backdrop-blur border-primary/20 overflow-hidden">
                             <CardContent className="pt-4 pb-4 space-y-3">
                               <div className="flex justify-between items-start gap-2">
                                 <div className="flex-1 min-w-0">
                                   <p className="font-semibold text-foreground truncate">{agendamento.servico_nome}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {format(agendamento.data, "dd/MM/yyyy 'às' HH:mm", {
-                              locale: ptBR
-                            })}
+                            locale: ptBR
+                          })}
                                   </p>
                                   
                                   {/* Informações do Profissional e Sala */}
@@ -1349,24 +1494,18 @@ const ProfileMobile = () => {
                                   <Badge variant={isInService ? 'default' : agendamento.status === 'confirmado' ? 'default' : 'secondary'} className="flex-shrink-0 text-[10px] px-2 py-1">
                                     {isInService ? <><Timer className="h-2.5 w-2.5 mr-1" />Em Atendimento</> : agendamento.status === 'confirmado' ? <><CheckCircle className="h-2.5 w-2.5 mr-1" />Confirmado</> : <><Clock className="h-2.5 w-2.5 mr-1" />Aguardando</>}
                                   </Badge>
-                                  {(agendamento as any).pagamento_parcial && (
-                                    <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/20">
+                                  {(agendamento as any).pagamento_parcial && <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/20">
                                       <Wallet className="h-2.5 w-2.5 mr-1" />
                                       Pagamento Parcial
-                                    </Badge>
-                                  )}
-                                  {agendamento.editado && (
-                                    <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-blue-500 text-blue-600">
+                                    </Badge>}
+                                  {agendamento.editado && <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-blue-500 text-blue-600">
                                       <RefreshCw className="h-2.5 w-2.5 mr-1" />
                                       Reagendado
-                                    </Badge>
-                                  )}
-                                  {(agendamento as any).cancelado && (
-                                    <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-red-500 text-red-600">
+                                    </Badge>}
+                                  {(agendamento as any).cancelado && <Badge variant="outline" className="flex-shrink-0 text-[10px] px-2 py-1 border-red-500 text-red-600">
                                       <XCircle className="h-2.5 w-2.5 mr-1" />
                                       Cancelado
-                                    </Badge>
-                                  )}
+                                    </Badge>}
                                 </div>
                               </div>
                               
@@ -1377,18 +1516,16 @@ const ProfileMobile = () => {
                                   <div className="flex flex-col">
                                     <p className="text-lg font-bold text-primary">
                                       R$ {agendamento.preco.toLocaleString('pt-BR', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2
-                              })}
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2
+                            })}
                                     </p>
-                                    {(agendamento as any).pagamento_parcial && (agendamento as any).valor_restante > 0 && (
-                                      <p className="text-[10px] text-amber-600 font-medium">
-                                        Restante: R$ {((agendamento as any).valor_restante).toLocaleString('pt-BR', {
-                                          minimumFractionDigits: 2,
-                                          maximumFractionDigits: 2
-                                        })}
-                                      </p>
-                                    )}
+                                    {(agendamento as any).pagamento_parcial && (agendamento as any).valor_restante > 0 && <p className="text-[10px] text-amber-600 font-medium">
+                                        Restante: R$ {(agendamento as any).valor_restante.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2
+                            })}
+                                      </p>}
                                   </div>
                                   <div className={`text-[10px] flex-shrink-0 ${isInService ? 'text-green-600' : agendamento.status === 'confirmado' ? 'text-green-600' : 'text-amber-600'}`}>
                                     {isInService ? <div className="flex items-center gap-1">
@@ -1405,20 +1542,15 @@ const ProfileMobile = () => {
                                 </div>
 
                                 {/* Botões de Ação */}
-                                <div className="grid grid-cols-2 gap-2">
-                                  <Button variant="outline" size="sm" className="text-[10px] h-8 border-primary/30 hover:bg-primary/10" onClick={() => handleSaveReceipt(agendamento)}>
-                                    <Download className="h-3 w-3 mr-1" />
-                                    <span className="truncate">Comprovante</span>
-                                  </Button>
-
+                                <div>
                                   <AddToCalendarButton agendamento={{
-                            id: agendamento.id,
-                            servico_nome: agendamento.servico_nome,
-                            data: agendamento.data,
-                            duracao: 30,
-                            funcionario_nome: agendamento.funcionario_nome,
-                            sala_atendimento: agendamento.sala_atendimento
-                          }} variant="outline" size="sm" className="text-[10px] h-8 border-primary/30 hover:bg-primary/10" />
+                          id: agendamento.id,
+                          servico_nome: agendamento.servico_nome,
+                          data: agendamento.data,
+                          duracao: 30,
+                          funcionario_nome: agendamento.funcionario_nome,
+                          sala_atendimento: agendamento.sala_atendimento
+                        }} variant="outline" size="sm" className="text-[10px] h-8 border-primary/30 hover:bg-primary/10 w-full" />
                                 </div>
 
                                 {agendamento.status === 'aguardando_confirmacao' ? <div className="flex items-center space-x-2">
@@ -1469,9 +1601,9 @@ const ProfileMobile = () => {
                               </div>
                             </CardContent>
                           </Card>;
-                })}
+              })}
               </div>;
-            })()}
+          })()}
 
           </div>;
       case "historico":
@@ -1585,16 +1717,12 @@ const ProfileMobile = () => {
                       locale: ptBR
                     })}
                           </p>
-                          {agendamento.funcionario_nome && (
-                            <p className="text-xs text-muted-foreground mt-1">
+                          {agendamento.funcionario_nome && <p className="text-xs text-muted-foreground mt-1">
                               Profissional: {agendamento.funcionario_nome}
-                            </p>
-                          )}
-                          {agendamento.sala_atendimento && (
-                            <p className="text-xs text-muted-foreground">
+                            </p>}
+                          {agendamento.sala_atendimento && <p className="text-xs text-muted-foreground">
                               Sala: {agendamento.sala_atendimento}
-                            </p>
-                          )}
+                            </p>}
                         </div>
                         <Badge variant="destructive" className="flex items-center gap-1">
                           <XCircle className="h-3 w-3" />
@@ -1718,7 +1846,7 @@ const ProfileMobile = () => {
                     })}
                           </p>
                           {comanda.tipo_pagamento && <div className="flex items-center justify-end gap-1 mt-1">
-                              {comanda.tipo_pagamento === 'PIX' ? <CreditCard className="h-3 w-3 text-blue-600" /> : <Banknote className="h-3 w-3 text-green-600" />}
+                              {getPaymentIcon(comanda.tipo_pagamento)}
                               <Badge variant="outline" className="text-xs">
                                 {comanda.tipo_pagamento}
                               </Badge>
@@ -1770,6 +1898,8 @@ const ProfileMobile = () => {
           data: Date;
           metodo: string;
           status: 'pago' | 'pendente';
+          tempo_inicio?: Date;
+          tempo_fim?: Date;
         }
         const todosPagamentos: Pagamento[] = [...agendamentosFinalizados.map(a => ({
           id: a.id,
@@ -1778,7 +1908,9 @@ const ProfileMobile = () => {
           valor: a.preco,
           data: a.data_atendimento,
           metodo: a.forma_pagamento_utilizada,
-          status: 'pago' as const
+          status: 'pago' as const,
+          tempo_inicio: a.data_atendimento,
+          tempo_fim: a.data_conclusao
         })), ...comandasFinalizadas.map(c => ({
           id: c.id,
           tipo: 'comanda' as const,
@@ -1810,9 +1942,9 @@ const ProfileMobile = () => {
           return true;
         });
         const financeiroDate = new Date();
-        const periodoInicio = filtroPeriodo === 'mensal' ? startOfMonth(financeiroDate) : startOfYear(financeiroDate);
-        const periodoFim = filtroPeriodo === 'mensal' ? endOfMonth(financeiroDate) : endOfYear(financeiroDate);
-        const totalPeriodo = todosPagamentos.filter(p => p.status === 'pago' && isWithinInterval(p.data, {
+        const periodoInicio = filtroPeriodo === 'mensal' ? startOfMonth(financeiroDate) : filtroPeriodo === 'anual' ? startOfYear(financeiroDate) : null;
+        const periodoFim = filtroPeriodo === 'mensal' ? endOfMonth(financeiroDate) : filtroPeriodo === 'anual' ? endOfYear(financeiroDate) : null;
+        const totalPeriodo = filtroPeriodo === 'geral' ? todosPagamentos.filter(p => p.status === 'pago').reduce((acc, p) => acc + p.valor, 0) : todosPagamentos.filter(p => p.status === 'pago' && periodoInicio && periodoFim && isWithinInterval(p.data, {
           start: periodoInicio,
           end: periodoFim
         })).reduce((acc, p) => acc + p.valor, 0);
@@ -1830,13 +1962,14 @@ const ProfileMobile = () => {
                     <TrendingUp className="h-5 w-5 text-primary" />
                     <span className="font-semibold text-foreground">Total Gasto</span>
                   </div>
-                  <Select value={filtroPeriodo} onValueChange={(value: "mensal" | "anual") => setFiltroPeriodo(value)}>
+                  <Select value={filtroPeriodo} onValueChange={(value: "mensal" | "anual" | "geral") => setFiltroPeriodo(value)}>
                     <SelectTrigger className="w-[120px] h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="mensal">Mensal</SelectItem>
                       <SelectItem value="anual">Anual</SelectItem>
+                      <SelectItem value="geral">Geral</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1849,7 +1982,7 @@ const ProfileMobile = () => {
                   })}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {filtroPeriodo === 'mensal' ? format(financeiroDate, "MMMM 'de' yyyy", {
+                    {filtroPeriodo === 'geral' ? 'Histórico Completo' : filtroPeriodo === 'mensal' ? format(financeiroDate, "MMMM 'de' yyyy", {
                     locale: ptBR
                   }) : format(financeiroDate, "yyyy", {
                     locale: ptBR
@@ -1886,7 +2019,10 @@ const ProfileMobile = () => {
                           <span className="text-sm font-medium">{metodo}</span>
                         </div>
                         <Badge variant="outline" className="text-xs">
-                          {todosPagamentos.filter(p => p.metodo === metodo && p.status === 'pago').length} vezes
+                          {(() => {
+                      const count = todosPagamentos.filter(p => p.metodo === metodo && p.status === 'pago').length;
+                      return `${count} ${count === 1 ? 'vez' : 'vezes'}`;
+                    })()}
                         </Badge>
                       </div>)}
                   </div>
@@ -1963,7 +2099,10 @@ const ProfileMobile = () => {
                   Histórico Completo
                 </h4>
                 <Badge variant="outline" className="text-xs">
-                  {pagamentosFiltrados.filter(p => p.status === 'pago').length} pagamentos
+                  {(() => {
+                  const count = pagamentosFiltrados.filter(p => p.status === 'pago').length;
+                  return `${count} ${count === 1 ? 'pagamento' : 'pagamentos'}`;
+                })()}
                 </Badge>
               </div>
 
@@ -2027,49 +2166,81 @@ const ProfileMobile = () => {
                                   font-family: system-ui, -apple-system, sans-serif;
                                 `;
                         comprovanteDiv.innerHTML = `
-                                  <div style="text-align: center; margin-bottom: 24px;">
-                                    <img src="${logoMain}" alt="Confallony Logo" style="width: 320px; height: auto; margin: 0 auto 16px; display: block;" />
-                                    <p style="font-size: 14px; margin: 0; opacity: 0.9; color: ${textColor};">Comprovante de Pagamento</p>
+                                  <div style="text-align: center; margin-bottom: 32px;">
+                                    <img src="${logoMain}" alt="Confallony Logo" style="width: 280px; height: auto; margin: 0 auto 20px; display: block;" />
+                                    <div style="height: 1px; background: ${borderColor}; margin: 20px 0;"></div>
+                                    <p style="font-size: 16px; margin: 0; font-weight: 600; color: ${textColor}; letter-spacing: 0.5px;">COMPROVANTE DE PAGAMENTO</p>
                                   </div>
                                   
-                                  <div style="background: ${overlayLight}; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-                                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px; color: ${textColor};">✓ Status</div>
+                                  <div style="background: ${overlayLight}; padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid ${borderColor};">
+                                    <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">✓ Status</div>
                                     <div style="font-size: 16px; font-weight: 600; color: ${textColor};">${pagamento.status === 'pago' ? '✓ Pago' : '⏳ Pendente'}</div>
                                   </div>
                                   
-                                  <div style="margin-bottom: 16px;">
-                                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px; color: ${textColor};">📋 Descrição</div>
-                                    <div style="font-size: 14px; font-weight: 500; color: ${textColor};">${pagamento.descricao}</div>
-                                  </div>
+                                  <div style="height: 1px; background: ${borderColor}; margin: 16px 0;"></div>
                                   
                                   <div style="margin-bottom: 16px;">
-                                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px; color: ${textColor};">📅 Data e Hora</div>
-                                    <div style="font-size: 14px; color: ${textColor};">${format(pagamento.data, "dd/MM/yyyy 'às' HH:mm", {
+                                    <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">📋 Descrição</div>
+                                    <div style="font-size: 15px; font-weight: 500; color: ${textColor};">${pagamento.descricao}</div>
+                                  </div>
+                                  
+                                  <div style="height: 1px; background: ${borderColor}; margin: 16px 0;"></div>
+                                  
+                                  <div style="margin-bottom: 16px;">
+                                    <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">📅 Data</div>
+                                    <div style="font-size: 15px; color: ${textColor};">${format(pagamento.data, "dd/MM/yyyy", {
                           locale: ptBR
                         })}</div>
                                   </div>
                                   
-                                  <div style="margin-bottom: 16px;">
-                                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px; color: ${textColor};">💳 Método de Pagamento</div>
-                                    <div style="font-size: 14px; color: ${textColor};">${pagamento.metodo}</div>
+                                  <div style="height: 1px; background: ${borderColor}; margin: 16px 0;"></div>
+                                  
+                                  ${pagamento.tempo_inicio && pagamento.tempo_fim ? `
+                                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                                    <div>
+                                      <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">🕐 Horário Início</div>
+                                      <div style="font-size: 15px; color: ${textColor};">${format(pagamento.tempo_inicio, "HH:mm", {
+                          locale: ptBR
+                        })}</div>
+                                    </div>
+                                    <div>
+                                      <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">🕐 Horário Fim</div>
+                                      <div style="font-size: 15px; color: ${textColor};">${format(pagamento.tempo_fim, "HH:mm", {
+                          locale: ptBR
+                        })}</div>
+                                    </div>
                                   </div>
                                   
+                                  <div style="height: 1px; background: ${borderColor}; margin: 16px 0;"></div>
+                                  ` : ''}
+                                  
                                   <div style="margin-bottom: 16px;">
-                                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 4px; color: ${textColor};">🏷️ Tipo</div>
-                                    <div style="font-size: 14px; color: ${textColor};">${pagamento.tipo === 'servico' ? 'Serviço' : 'Comanda'}</div>
+                                    <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">💳 Método de Pagamento</div>
+                                    <div style="font-size: 15px; color: ${textColor};">${pagamento.metodo}</div>
                                   </div>
                                   
-                                  <div style="background: ${overlayMedium}; padding: 20px; border-radius: 8px; text-align: center; margin-top: 24px;">
-                                    <div style="font-size: 14px; opacity: 0.8; margin-bottom: 8px; color: ${textColor};">💰 Valor Total</div>
-                                    <div style="font-size: 32px; font-weight: bold; color: ${textColor};">R$ ${pagamento.valor.toLocaleString('pt-BR', {
+                                  <div style="height: 1px; background: ${borderColor}; margin: 16px 0;"></div>
+                                  
+                                  <div style="margin-bottom: 16px;">
+                                    <div style="font-size: 11px; opacity: 0.7; margin-bottom: 6px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">🏷️ Tipo</div>
+                                    <div style="font-size: 15px; color: ${textColor};">${pagamento.tipo === 'servico' ? 'Serviço' : 'Comanda'}</div>
+                                  </div>
+                                  
+                                  <div style="height: 1px; background: ${borderColor}; margin: 24px 0;"></div>
+                                  
+                                  <div style="background: ${overlayMedium}; padding: 24px; border-radius: 8px; text-align: center; border: 1px solid ${borderColor};">
+                                    <div style="font-size: 12px; opacity: 0.7; margin-bottom: 12px; color: ${textColor}; text-transform: uppercase; letter-spacing: 0.5px;">💰 Valor Total</div>
+                                    <div style="font-size: 36px; font-weight: bold; color: ${textColor}; letter-spacing: -0.5px;">R$ ${pagamento.valor.toLocaleString('pt-BR', {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2
                         })}</div>
                                   </div>
                                   
-                                  <div style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid ${borderColor};">
-                                    <p style="font-size: 14px; font-weight: 600; margin: 0 0 8px 0; color: ${textColor};">Obrigado pela preferência!</p>
-                                    <p style="font-size: 11px; opacity: 0.7; margin: 0; color: ${textColor};">Documento gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", {
+                                  <div style="height: 1px; background: ${borderColor}; margin: 24px 0;"></div>
+                                  
+                                  <div style="text-align: center;">
+                                    <p style="font-size: 15px; font-weight: 600; margin: 0 0 12px 0; color: ${textColor};">Obrigado pela preferência!</p>
+                                    <p style="font-size: 10px; opacity: 0.6; margin: 0; color: ${textColor};">Documento gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", {
                           locale: ptBR
                         })}</p>
                                   </div>
@@ -2126,6 +2297,109 @@ const ProfileMobile = () => {
         return <div className="space-y-4 p-4">
             <h3 className="text-lg font-semibold text-foreground mb-4">Configurações</h3>
             
+            {/* Card de Informações Pessoais */}
+            <Card className="bg-card/50 backdrop-blur border-primary/20">
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <User className="h-5 w-5 text-primary" />
+                    <h4 className="font-semibold text-foreground">Informações Pessoais</h4>
+                  </div>
+                  {!editMode && <Button variant="outline" size="sm" onClick={() => setEditMode(true)} className="gap-2">
+                      <Pencil className="h-4 w-4" />
+                      Editar
+                    </Button>}
+                </div>
+
+                <div className="space-y-4">
+                  {/* Nome */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <User className="h-4 w-4" />
+                      <span>Nome Completo</span>
+                    </div>
+                    {editMode ? <input type="text" value={formData.nome} onChange={e => setFormData({
+                    ...formData,
+                    nome: e.target.value
+                  })} className="w-full px-3 py-2 rounded-lg border border-primary/20 bg-background/50 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" placeholder="Digite seu nome completo" /> : <p className="text-foreground font-medium px-3 py-2 rounded-lg bg-background/50">
+                        {userData?.nome || "Não informado"}
+                      </p>}
+                  </div>
+
+                  {/* Email (read-only) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Mail className="h-4 w-4" />
+                      <span>E-mail</span>
+                      <Lock className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                    <p className="text-foreground font-medium px-3 py-2 rounded-lg bg-muted/30 opacity-60">
+                      {userData?.email || "Não informado"}
+                    </p>
+                    
+                  </div>
+
+                  {/* Telefone */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Phone className="h-4 w-4" />
+                      <span>Telefone</span>
+                    </div>
+                    {editMode ? <input type="tel" value={formData.telefone} onChange={e => setFormData({
+                    ...formData,
+                    telefone: formatPhone(e.target.value)
+                  })} className="w-full px-3 py-2 rounded-lg border border-primary/20 bg-background/50 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" placeholder="(00) 0 0000-0000" maxLength={17} /> : <p className="text-foreground font-medium px-3 py-2 rounded-lg bg-background/50">
+                        {formatPhone(userData?.telefone || "") || "Não informado"}
+                      </p>}
+                  </div>
+
+                  {/* CPF */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <IdCard className="h-4 w-4" />
+                      <span>CPF</span>
+                    </div>
+                    {editMode ? <input type="text" value={formData.cpf} onChange={e => setFormData({
+                    ...formData,
+                    cpf: formatCPF(e.target.value)
+                  })} className="w-full px-3 py-2 rounded-lg border border-primary/20 bg-background/50 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" placeholder="XXX.XXX.XXX-XX" maxLength={14} /> : <p className="text-foreground font-medium px-3 py-2 rounded-lg bg-background/50">
+                        {formatCPF(userData?.cpf || "") || "Não informado"}
+                      </p>}
+                  </div>
+
+                  {/* Data de Nascimento */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      <span>Data de Nascimento</span>
+                      <Lock className="h-3 w-3 ml-auto text-muted-foreground/60" />
+                    </div>
+                    <p className="text-foreground font-medium px-3 py-2 rounded-lg bg-background/50 border border-primary/10">
+                      {formatDate(userData?.data_nascimento || "") || "Não informado"}
+                    </p>
+                    
+                  </div>
+                </div>
+
+                {/* Botões de ação no modo edição */}
+                {editMode && <div className="flex gap-2 pt-4 border-t border-primary/20">
+                    <Button onClick={handleUpdateProfile} disabled={isUpdating} className="flex-1 gap-2">
+                      {isUpdating ? <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Salvando...
+                        </> : <>
+                          <Check className="h-4 w-4" />
+                          Salvar Alterações
+                        </>}
+                    </Button>
+                    <Button variant="outline" onClick={handleCancelEdit} disabled={isUpdating} className="gap-2">
+                      <X className="h-4 w-4" />
+                      Cancelar
+                    </Button>
+                  </div>}
+              </CardContent>
+            </Card>
+
             {/* Configurações de Aparência */}
             <Card className="bg-card/50 backdrop-blur border-primary/20">
               <CardContent className="pt-6 space-y-3">
@@ -2140,89 +2414,7 @@ const ProfileMobile = () => {
             </Card>
 
             {/* Configurações de Notificações Push */}
-            <Card className="bg-card/50 backdrop-blur border-primary/20">
-              <CardContent className="pt-6 space-y-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <Bell className="h-5 w-5 text-primary" />
-                  <h4 className="font-semibold text-foreground">Notificações de Lembrete</h4>
-                </div>
-                
-                <div className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    Receba lembretes automáticos no seu dispositivo antes dos seus atendimentos:
-                  </p>
-                  <ul className="list-disc list-inside space-y-1 ml-2">
-                    <li>2 horas antes</li>
-                    <li>1 hora antes</li>
-                    <li>30 minutos antes</li>
-                    <li>15 minutos antes</li>
-                  </ul>
-                  <p className="text-xs">
-                    Ative as notificações para não perder seus horários agendados!
-                  </p>
-                </div>
-
-                <div className="pt-2 space-y-2">
-                  <NotificationPermissionButton />
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={async () => {
-                      if (!currentUser?.uid) {
-                        toast({
-                          title: "Erro",
-                          description: "Usuário não autenticado",
-                          variant: "destructive"
-                        });
-                        return;
-                      }
-
-                      try {
-                        const { supabase } = await import('@/integrations/supabase/client');
-                        
-                        const { data, error } = await supabase.functions.invoke('send-push-notification', {
-                          body: {
-                            userIds: [currentUser.uid],
-                            title: '🔔 Notificação de Teste',
-                            body: 'Esta é uma notificação de teste do sistema Firebase!',
-                            data: { type: 'test' }
-                          }
-                        });
-
-                        if (error) {
-                          console.error('Erro ao enviar notificação:', error);
-                          toast({
-                            title: "Erro ao enviar",
-                            description: "Não foi possível enviar a notificação de teste",
-                            variant: "destructive"
-                          });
-                          return;
-                        }
-
-                        toast({
-                          title: "Notificação enviada!",
-                          description: data?.recipients > 0 
-                            ? "Você deve receber a notificação em instantes" 
-                            : "Certifique-se de ter ativado as notificações",
-                        });
-                      } catch (error) {
-                        console.error('Erro:', error);
-                        toast({
-                          title: "Erro",
-                          description: "Ocorreu um erro ao enviar a notificação",
-                          variant: "destructive"
-                        });
-                      }
-                    }}
-                  >
-                    <Bell className="h-4 w-4 mr-2" />
-                    Testar Notificação
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            
 
             {/* Configurações de Lembretes de Agendamento */}
             <AgendamentoReminderConfig />
@@ -2320,7 +2512,7 @@ const ProfileMobile = () => {
                 forma_pagamento: data.forma_pagamento || '',
                 cancelado: data.cancelado || false,
                 pagamento_parcial: data.pagamento_parcial || false,
-                valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+                valor_restante: data.valor_parcial_restante ?? data.valor_restante ?? 0,
                 valor_total: data.valor_total || 0,
                 valor_pago: data.valor_pago || 0
               });
@@ -2361,7 +2553,7 @@ const ProfileMobile = () => {
                 forma_pagamento: data.forma_pagamento || '',
                 cancelado: data.cancelado || false,
                 pagamento_parcial: data.pagamento_parcial || false,
-                valor_restante: (data.valor_parcial_restante ?? data.valor_restante ?? 0),
+                valor_restante: data.valor_parcial_restante ?? data.valor_restante ?? 0,
                 valor_total: data.valor_total || 0,
                 valor_pago: data.valor_pago || 0
               });
@@ -2372,6 +2564,52 @@ const ProfileMobile = () => {
         loadData();
       }} />
         </>}
+
+      {/* Modal para solicitar reembolso */}
+      <AlertDialog open={reembolsoModalOpen} onOpenChange={setReembolsoModalOpen}>
+        <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md mx-4">
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle className="flex items-center gap-2 text-sm">
+              <MessageCircle className="h-4 w-4 text-green-500" />
+              Solicitar Reembolso
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs space-y-2">
+              <p>Seu agendamento foi cancelado com sucesso.</p>
+              {agendamentoCancelado && <div className="bg-muted/50 p-3 rounded-lg space-y-1 my-2">
+                  <p><strong>Serviço:</strong> {agendamentoCancelado.servico_nome}</p>
+                  <p><strong>Data:</strong> {format(agendamentoCancelado.data, "dd/MM/yyyy 'às' HH:mm", {
+                  locale: ptBR
+                })}</p>
+                  <p><strong>Valor:</strong> R$ {agendamentoCancelado.preco.toLocaleString('pt-BR', {
+                  minimumFractionDigits: 2
+                })}</p>
+                </div>}
+              <p className="text-foreground">Deseja solicitar o reembolso? Entre em contato conosco via WhatsApp.</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
+            <AlertDialogAction onClick={() => {
+            const mensagem = agendamentoCancelado ? `Olá! Gostaria de solicitar o reembolso do meu agendamento cancelado:\n\n` + `Serviço: ${agendamentoCancelado.servico_nome}\n` + `Data: ${format(agendamentoCancelado.data, "dd/MM/yyyy 'às' HH:mm", {
+              locale: ptBR
+            })}\n` + `Valor: R$ ${agendamentoCancelado.preco.toLocaleString('pt-BR', {
+              minimumFractionDigits: 2
+            })}\n\n` + `Aguardo retorno. Obrigado!` : 'Olá! Gostaria de solicitar o reembolso do meu agendamento cancelado.';
+            window.open(`https://wa.me/556298428528?text=${encodeURIComponent(mensagem)}`, '_blank');
+            setReembolsoModalOpen(false);
+            setAgendamentoCancelado(null);
+          }} className="w-full text-xs h-9 bg-green-600 hover:bg-green-700">
+              <MessageCircle className="h-3 w-3 mr-2" />
+              Solicitar via WhatsApp
+            </AlertDialogAction>
+            <AlertDialogCancel className="w-full text-xs h-9 mt-0" onClick={() => {
+            setReembolsoModalOpen(false);
+            setAgendamentoCancelado(null);
+          }}>
+              Fechar
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Menu de Opções de Avatar */}
       <AlertDialog open={avatarMenuOpen} onOpenChange={setAvatarMenuOpen}>
@@ -2528,6 +2766,105 @@ const ProfileMobile = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Modal de Detalhes do Mês */}
+      <Dialog open={mesDetalheOpen} onOpenChange={setMesDetalheOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-primary">
+              Visitas em {mesSelecionado?.mes}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <ScrollArea className="h-[60vh] pr-4">
+            <div className="space-y-3">
+              {mesSelecionado && (() => {
+              // Filtrar agendamentos do mês selecionado
+              const agendamentosDoMes = agendamentosFinalizados.filter(a => isWithinInterval(a.data_atendimento, {
+                start: mesSelecionado.monthStart,
+                end: mesSelecionado.monthEnd
+              })).sort((a, b) => b.data_atendimento.getTime() - a.data_atendimento.getTime());
+              if (agendamentosDoMes.length === 0) {
+                return <div className="text-center py-12 text-muted-foreground">
+                      <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p>Nenhuma visita registrada neste mês</p>
+                    </div>;
+              }
+
+              // Agrupar por dia
+              const visitasPorDia = agendamentosDoMes.reduce((acc, agendamento) => {
+                const diaKey = format(agendamento.data_atendimento, 'yyyy-MM-dd');
+                if (!acc[diaKey]) {
+                  acc[diaKey] = [];
+                }
+                acc[diaKey].push(agendamento);
+                return acc;
+              }, {} as Record<string, AtendimentoConcluido[]>);
+              return Object.entries(visitasPorDia).map(([diaKey, visitas]) => {
+                const dia = new Date(diaKey);
+                const totalDia = visitas.reduce((sum, v) => sum + (v.preco || 0), 0);
+                return <Card key={diaKey} className="bg-card/50 backdrop-blur border-primary/20">
+                      <CardContent className="pt-4 pb-4">
+                        <div className="flex items-center justify-between mb-3 pb-3 border-b border-primary/10">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-primary" />
+                            <span className="font-semibold text-foreground">
+                              {format(dia, "dd 'de' MMMM", {
+                            locale: ptBR
+                          })}
+                            </span>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {visitas.length} {visitas.length === 1 ? 'visita' : 'visitas'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          {visitas.map((visita, idx) => <div key={idx} className="flex items-center justify-between text-sm py-2 px-3 rounded-lg bg-muted/30">
+                              <div className="flex-1">
+                                <p className="font-medium text-foreground">{visita.servico_nome}</p>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {format(visita.data_atendimento, "HH:mm")}
+                                  </span>
+                                  {visita.funcionario_nome && <span className="flex items-center gap-1">
+                                      <User className="h-3 w-3" />
+                                      {visita.funcionario_nome}
+                                    </span>}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-primary">
+                                  R$ {visita.preco.toLocaleString('pt-BR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2
+                            })}
+                                </p>
+                                {visita.forma_pagamento && <p className="text-xs text-muted-foreground mt-1">
+                                    {visita.forma_pagamento}
+                                  </p>}
+                              </div>
+                            </div>)}
+                        </div>
+
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-primary/10">
+                          <span className="text-sm font-medium text-muted-foreground">Total do dia</span>
+                          <span className="text-lg font-bold text-primary">
+                            R$ {totalDia.toLocaleString('pt-BR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>;
+              });
+            })()}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </>;
 };
 export default ProfileMobile;

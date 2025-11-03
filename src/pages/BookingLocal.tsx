@@ -482,15 +482,6 @@ const Index = () => {
 
       const agendamentoRef = await addDoc(collection(db, 'fila'), newAppointment);
 
-      // Notificar admins sobre novo agendamento
-      const { notifyAdminsNewQueue } = await import('@/utils/notify-admins');
-      notifyAdminsNewQueue({
-        clienteNome: userName,
-        servicoNome: selectedService.nome,
-        dataAgendamento: appointmentDate,
-        appointmentId: agendamentoRef.id
-      }).catch(error => console.error('Erro ao notificar admins:', error));
-
       // Se for pagamento parcial, criar registro em pagamentos_parciais
       if (pagarParcial) {
         await addDoc(collection(db, 'pagamentos_parciais'), {

@@ -10,7 +10,6 @@ import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } fro
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useCustomNotifications } from '@/hooks/useCustomNotifications';
 
 export interface UserData {
   uid: string;
@@ -59,7 +58,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [userRoles, setUserRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const { notifyLoginSuccess, notifyLogoutSuccess, notifyQueueWaitTime } = useCustomNotifications(currentUser?.uid);
 
   // Buscar roles do Supabase usando Firebase UID (mapeamento via tabela profiles ou similar)
   const loadUserRoles = async (firebaseUid: string) => {
@@ -209,31 +207,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         localStorage.removeItem('savedCredentials');
       }
       
-      const loadedUserData = await loadUserData(userCredential.user);
+      await loadUserData(userCredential.user);
       
-      // Notificação personalizada de login
-      await notifyLoginSuccess(loadedUserData?.nome || userCredential.user.email || 'Usuário');
-      
-      // Verificar se há agendamentos na fila para este usuário
-      try {
-        const queueRef = collection(db, 'fila');
-        const userQueueQuery = query(
-          queueRef, 
-          where('usuario_id', '==', userCredential.user.uid),
-          where('status', 'in', ['aguardando', 'confirmado'])
-        );
-        const queueSnapshot = await getDocs(userQueueQuery);
-
-        if (!queueSnapshot.empty) {
-          const appointment = queueSnapshot.docs[0].data();
-          await notifyQueueWaitTime(
-            appointment.tempo_estimado || 30, 
-            appointment.posicao || 1
-          );
-        }
-      } catch (queueError) {
-        console.error('Erro ao verificar fila:', queueError);
-      }
+      toast({
+        title: "Login realizado com sucesso!",
+        description: "Que bom te ver novamente! 😊",
+      });
     } catch (error: any) {
       console.error('Erro no login:', error);
       
@@ -322,16 +301,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   // Logout
   const logout = async () => {
     try {
-      const userName = userData?.nome || currentUser?.email || 'Usuário';
-      
       await signOut(auth);
       setCurrentUser(null);
       setUserData(null);
       localStorage.removeItem('userData');
       localStorage.removeItem('savedCredentials');
       
-      // Notificação personalizada de logout
-      await notifyLogoutSuccess(userName);
+      toast({
+        title: "Até breve! 👋",
+        description: "Esperamos você em breve!",
+      });
     } catch (error) {
       console.error('Erro no logout:', error);
       toast({

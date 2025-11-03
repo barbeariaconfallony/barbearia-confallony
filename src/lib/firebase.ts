@@ -3,7 +3,6 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getMessaging } from "firebase/messaging";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -22,15 +21,4 @@ const analytics = getAnalytics(app);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Inicializar Messaging apenas se suportado (navegador web)
-let messaging = null;
-try {
-  if (typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator) {
-    messaging = getMessaging(app);
-  }
-} catch (error) {
-  console.log('Firebase Messaging não suportado neste ambiente:', error);
-}
-
-export { messaging };
 export default app;

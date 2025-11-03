@@ -1,5 +1,7 @@
 import { useTheme } from "next-themes"
-import { Toaster as Sonner, toast } from "sonner"
+import { Toaster as Sonner, toast as sonnerToast } from "sonner"
+import { useNotifications } from "@/hooks/useNotifications"
+import { useEffect, type ReactNode } from "react"
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
@@ -27,5 +29,63 @@ const Toaster = ({ ...props }: ToasterProps) => {
     />
   )
 }
+
+// Wrapper do toast que também envia notificações push
+let notificationService: ReturnType<typeof useNotifications> | null = null;
+
+export const ToastNotificationProvider = ({ children }: { children: ReactNode }) => {
+  const notifications = useNotifications();
+  
+  useEffect(() => {
+    notificationService = notifications;
+  }, [notifications]);
+  
+  return <>{children}</>;
+};
+
+const toast = {
+  ...sonnerToast,
+  success: (title: string, options?: { description?: string }) => {
+    sonnerToast.success(title, options);
+    if (notificationService?.permission === 'granted') {
+      notificationService.showNotification({
+        title: `✅ ${title}`,
+        body: options?.description,
+        tag: 'success'
+      });
+    }
+  },
+  error: (title: string, options?: { description?: string }) => {
+    sonnerToast.error(title, options);
+    if (notificationService?.permission === 'granted') {
+      notificationService.showNotification({
+        title: `❌ ${title}`,
+        body: options?.description,
+        tag: 'error',
+        requireInteraction: true
+      });
+    }
+  },
+  warning: (title: string, options?: { description?: string }) => {
+    sonnerToast.warning(title, options);
+    if (notificationService?.permission === 'granted') {
+      notificationService.showNotification({
+        title: `⚠️ ${title}`,
+        body: options?.description,
+        tag: 'warning'
+      });
+    }
+  },
+  info: (title: string, options?: { description?: string }) => {
+    sonnerToast.info(title, options);
+    if (notificationService?.permission === 'granted') {
+      notificationService.showNotification({
+        title: `ℹ️ ${title}`,
+        body: options?.description,
+        tag: 'info'
+      });
+    }
+  }
+};
 
 export { Toaster, toast }

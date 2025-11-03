@@ -6,25 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { 
-  CreditCard, 
-  Banknote, 
-  Copy, 
-  CheckCircle, 
-  Clock, 
-  XCircle,
-  User,
-  Mail,
-  Percent
-} from 'lucide-react';
+import { CreditCard, Banknote, Copy, CheckCircle, Clock, XCircle, User, Mail, Percent, DollarSign } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse, PaymentStatusResponse } from '@/types/mercadopago';
 import { ClientSelectionModal } from '@/components/ClientSelectionModal';
 import { ClientDropdownSelector } from '@/components/ClientDropdownSelector';
+import { PagamentoMistoModal } from '@/components/comandas/PagamentoMistoModal';
 import { updateDoc, doc, addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { supabase } from '@/integrations/supabase/client';
-
 interface CartItem {
   id: string;
   nome: string;
@@ -37,14 +27,12 @@ interface CartItem {
   ativo: boolean;
   quantity: number;
 }
-
 interface CheckoutModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cartItems: CartItem[];
   onCheckoutCompleto: (formaPagamento?: string) => void;
 }
-
 interface PaymentData {
   id: string;
   qr_code: string;
@@ -52,14 +40,12 @@ interface PaymentData {
   ticket_url: string;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
 }
-
 interface ClienteData {
   nome: string;
   email: string;
   telefone: string;
   cpf: string;
 }
-
 interface UserData {
   firstName: string;
   lastName: string;
@@ -68,9 +54,12 @@ interface UserData {
 }
 
 // Componente para gerar QR Code a partir do texto
-const GeneratedQRCode: React.FC<{ qrText: string }> = ({ qrText }) => {
+const GeneratedQRCode: React.FC<{
+  qrText: string;
+}> = ({
+  qrText
+}) => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
-  
   React.useEffect(() => {
     const generateQRCode = async () => {
       try {
@@ -80,23 +69,17 @@ const GeneratedQRCode: React.FC<{ qrText: string }> = ({ qrText }) => {
         console.error('Erro ao gerar QR Code:', error);
       }
     };
-    
     if (qrText) {
       generateQRCode();
     }
   }, [qrText]);
-
   if (!qrCodeDataUrl) {
-    return (
-      <div className="w-48 h-48 bg-muted rounded-lg flex items-center justify-center">
+    return <div className="w-48 h-48 bg-muted rounded-lg flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+      </div>;
   }
-
   return <img src={qrCodeDataUrl} alt="QR Code Pix" className="w-48 h-48 object-contain" />;
 };
-
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   open,
   onOpenChange,
@@ -111,15 +94,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [selectedClientData, setSelectedClientData] = useState<ClienteData | null>(null);
   const [selectedPixClientData, setSelectedPixClientData] = useState<ClienteData | null>(null);
   const [discountPercent, setDiscountPercent] = useState<string>('');
+  const [pagamentoMistoOpen, setPagamentoMistoOpen] = useState(false);
+  const [tipoPagamentoSelecionado, setTipoPagamentoSelecionado] = useState<'dinheiro' | 'misto' | null>(null);
   const [userData, setUserData] = useState<UserData>({
     firstName: '',
     lastName: '',
     email: '',
     cpf: ''
   });
-  
-  const { toast } = useToast();
-
+  const {
+    toast
+  } = useToast();
   const resetModal = () => {
     setStep('cart');
     setPaymentData(null);
@@ -127,23 +112,33 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setSelectedClientData(null);
     setSelectedPixClientData(null);
     setDiscountPercent('');
-    setUserData({ firstName: '', lastName: '', email: '', cpf: '' });
+    setPagamentoMistoOpen(false);
+    setTipoPagamentoSelecionado(null);
+    setUserData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      cpf: ''
+    });
   };
-
   const handleClose = () => {
     resetModal();
     onOpenChange(false);
   };
 
   // Cálculos do carrinho
-  const subtotal = cartItems.reduce((total, item) => total + (item.preco * item.quantity), 0);
+  const subtotal = cartItems.reduce((total, item) => total + item.preco * item.quantity, 0);
   const discountAmount = (parseFloat(discountPercent) || 0) / 100 * subtotal;
   const total = subtotal - discountAmount;
 
   // Validação dos dados do usuário
   const validateUserData = (): boolean => {
-    const { firstName, lastName, email, cpf } = userData;
-    
+    const {
+      firstName,
+      lastName,
+      email,
+      cpf
+    } = userData;
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !cpf.trim()) {
       toast({
         title: "Dados incompletos",
@@ -174,7 +169,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       });
       return false;
     }
-
     return true;
   };
 
@@ -182,10 +176,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const formatCPF = (value: string) => {
     const cleanValue = value.replace(/\D/g, '');
     if (cleanValue.length <= 11) {
-      return cleanValue
-        .replace(/(\d{3})(\d)/, '$1.$2')
-        .replace(/(\d{3})(\d)/, '$1.$2')
-        .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      return cleanValue.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
     }
     return cleanValue.slice(0, 14);
   };
@@ -234,14 +225,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           cpf: userData.cpf
         },
         subtotal: subtotal,
-        desconto: discountAmount,  
+        desconto: discountAmount,
         total: total,
         formaPagamento: formaPagamento,
         status: 'finalizada',
         payment_id: paymentId || null,
         timestamp: new Date().getTime()
       };
-
       await addDoc(collection(db, 'compras_finalizadas'), vendaData);
       console.log('Dados da venda salvos na coleção compras_finalizadas');
     } catch (error) {
@@ -253,14 +243,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Atualizar estoque no Firebase
   const updateStock = async () => {
     try {
-      const updatePromises = cartItems.map(async (item) => {
+      const updatePromises = cartItems.map(async item => {
         const newStock = item.estoque - item.quantity;
         const productRef = doc(db, 'produtos', item.id);
         return updateDoc(productRef, {
           estoque: newStock
         });
       });
-
       await Promise.all(updatePromises);
       console.log('Estoque atualizado com sucesso');
     } catch (error) {
@@ -272,13 +261,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Criar pagamento PIX
   const createPixPayment = async () => {
     if (!validateUserData() || !validateStock()) return;
-    
     setLoading(true);
     try {
-      const itemsDescription = cartItems
-        .map(item => `${item.nome} (${item.quantity}x)`)
-        .join(', ');
-
+      const itemsDescription = cartItems.map(item => `${item.nome} (${item.quantity}x)`).join(', ');
       const paymentRequest: CreatePixPaymentRequest = {
         transaction_amount: total,
         description: `Compra de produtos: ${itemsDescription}`,
@@ -293,25 +278,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           }
         }
       };
-
       console.log('Enviando requisição para criar pagamento PIX:', paymentRequest);
-
-      const { data: result, error } = await supabase.functions.invoke('create-pix-payment', {
+      const {
+        data: result,
+        error
+      } = await supabase.functions.invoke('create-pix-payment', {
         body: paymentRequest
       });
-
       if (error) {
         console.error('Erro ao invocar função:', error);
         throw new Error(`Erro ao criar pagamento: ${error.message}`);
       }
-
       if (!result) {
         throw new Error('Resposta vazia da função');
       }
-
       console.log('Pagamento PIX criado:', result);
       const mercadoPagoResult = result as MercadoPagoPaymentResponse;
-      
       const newPaymentData: PaymentData = {
         id: mercadoPagoResult.id.toString(),
         qr_code: mercadoPagoResult.point_of_interaction?.transaction_data?.qr_code || '',
@@ -319,11 +301,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         ticket_url: mercadoPagoResult.point_of_interaction?.transaction_data?.ticket_url || '',
         status: mercadoPagoResult.status as 'pending' | 'approved' | 'rejected' | 'cancelled'
       };
-
       setPaymentData(newPaymentData);
       setPaymentStatus(mercadoPagoResult.status as 'pending' | 'approved' | 'rejected' | 'cancelled');
       setStep('pix-payment');
-
       toast({
         title: "QR Code gerado!",
         description: "Escaneie o código ou copie o código Pix para realizar o pagamento."
@@ -346,39 +326,34 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Polling para verificar status do pagamento (igual ao PixPayment)
   const startPaymentStatusPolling = (paymentId: string) => {
     console.log(`Iniciando verificação de status para pagamento: ${paymentId}`);
-    
     const interval = setInterval(async () => {
       try {
-        const { data: statusData, error } = await supabase.functions.invoke('check-payment-status', {
-          body: { paymentId }
+        const {
+          data: statusData,
+          error
+        } = await supabase.functions.invoke('check-payment-status', {
+          body: {
+            paymentId
+          }
         });
-
         if (error) {
           console.error('Erro ao verificar status:', error);
           return;
         }
-
         console.log('Status check response:', statusData);
-        
         if (statusData && statusData.status) {
           if (statusData.status !== paymentStatus) {
             setPaymentStatus(statusData.status);
-            
             if (statusData.status === 'approved') {
               clearInterval(interval);
-              
+
               // Atualizar estoque e salvar venda automaticamente
               try {
-                await Promise.all([
-                  updateStock(),
-                  saveVendaData("PIX", paymentId)
-                ]);
-                
+                await Promise.all([updateStock(), saveVendaData("PIX", paymentId)]);
                 toast({
                   title: "Pagamento aprovado! ✅",
                   description: "Sua compra foi finalizada com sucesso e salva em compras_finalizadas."
                 });
-                
                 setTimeout(() => {
                   onCheckoutCompleto("PIX");
                   handleClose();
@@ -416,6 +391,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Abrir modal de seleção de cliente para dinheiro físico
   const handleCashPayment = () => {
     if (!validateStock()) return;
+    setTipoPagamentoSelecionado('dinheiro');
     setClientSelectionOpen(true);
   };
 
@@ -433,7 +409,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     const nomeCompleto = clienteData.nome.split(' ');
     const firstName = nomeCompleto[0] || '';
     const lastName = nomeCompleto.slice(1).join(' ') || '';
-    
     setUserData({
       firstName: firstName,
       lastName: lastName,
@@ -445,25 +420,52 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   // Limpar seleção de cliente PIX
   const clearPixClientSelection = () => {
     setSelectedPixClientData(null);
-    setUserData({ firstName: '', lastName: '', email: '', cpf: '' });
+    setUserData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      cpf: ''
+    });
   };
 
   // Finalizar com dinheiro físico
   const finalizarComDinheiro = async () => {
     if (!selectedClientData) return;
-    
     try {
-      await Promise.all([
-        updateStock(),
-        saveVendaData("Dinheiro Físico", undefined)
-      ]);
-      
+      await Promise.all([updateStock(), saveVendaData("Dinheiro Físico", undefined)]);
       toast({
         title: "Pagamento confirmado!",
         description: "Compra finalizada com pagamento em dinheiro físico e salva em compras_finalizadas."
       });
-      
       onCheckoutCompleto("Dinheiro Físico");
+      handleClose();
+    } catch (error) {
+      toast({
+        title: "Erro ao finalizar compra",
+        description: "Houve um erro ao processar a venda.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Abrir modal de pagamento misto
+  const handlePagamentoMisto = () => {
+    if (!validateStock()) return;
+    setTipoPagamentoSelecionado('misto');
+    setClientSelectionOpen(true);
+  };
+
+  // Confirmar pagamento misto
+  const handleConfirmarPagamentoMisto = async (valorDinheiro: number, valorPix: number) => {
+    if (!selectedClientData) return;
+    
+    try {
+      await Promise.all([updateStock(), saveVendaData("Pagamento Misto", undefined)]);
+      toast({
+        title: "Pagamento misto confirmado!",
+        description: `Dinheiro: R$ ${valorDinheiro.toFixed(2)} | PIX: R$ ${valorPix.toFixed(2)}`
+      });
+      onCheckoutCompleto("Pagamento Misto");
       handleClose();
     } catch (error) {
       toast({
@@ -484,11 +486,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       });
     }
   };
-
   if (!cartItems.length) return null;
-
-  return (
-    <>
+  return <>
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -496,18 +495,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           </DialogHeader>
 
           {/* Resumo do carrinho */}
-          {step === 'cart' && (
-            <div className="space-y-4">
+          {step === 'cart' && <div className="space-y-4">
               <Card className="bg-muted/50">
                 <CardContent className="p-4">
                   <div className="space-y-3">
                     <h3 className="font-medium text-sm">Itens da Compra</h3>
-                    {cartItems.map((item) => (
-                      <div key={item.id} className="flex justify-between text-sm">
+                    {cartItems.map(item => <div key={item.id} className="flex justify-between text-sm">
                         <span>{item.nome} ({item.quantity}x)</span>
                         <span>R$ {(item.preco * item.quantity).toFixed(2)}</span>
-                      </div>
-                    ))}
+                      </div>)}
                     
                     <Separator />
                     
@@ -516,12 +512,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       <span>R$ {subtotal.toFixed(2)}</span>
                     </div>
                     
-                    {discountAmount > 0 && (
-                      <div className="flex justify-between text-sm text-green-600">
+                    {discountAmount > 0 && <div className="flex justify-between text-sm text-green-600">
                         <span>Desconto ({discountPercent}%):</span>
                         <span>- R$ {discountAmount.toFixed(2)}</span>
-                      </div>
-                    )}
+                      </div>}
                     
                     <Separator />
                     
@@ -539,26 +533,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   <Percent className="h-4 w-4" />
                   Desconto (%)
                 </Label>
-                <Input
-                  type="number"
-                  placeholder="0"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={discountPercent}
-                  onChange={(e) => setDiscountPercent(e.target.value)}
-                />
+                <Input type="number" placeholder="0" min="0" max="100" step="0.01" value={discountPercent} onChange={e => setDiscountPercent(e.target.value)} />
               </div>
 
               <div className="space-y-2">
                 <h3 className="font-medium">Escolha a forma de pagamento:</h3>
                 
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-full h-auto p-4 justify-start"
-                  onClick={() => setStep('pix-form')}
-                >
+                <Button variant="outline" size="lg" className="w-full h-auto p-4 justify-start" onClick={() => setStep('pix-form')}>
                   <CreditCard className="h-6 w-6 mr-3" />
                   <div className="text-left">
                     <div className="font-medium">PIX</div>
@@ -568,27 +549,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
                 </Button>
 
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-full h-auto p-4 justify-start"
-                  onClick={() => setStep('pix-form')}
-                >
-                  <CreditCard className="h-6 w-6 mr-3" />
-                  <div className="text-left">
-                    <div className="font-medium">Cartão de Crédito</div>
-                    <div className="text-sm text-muted-foreground">
-                      Em até 12x via MercadoPago
-                    </div>
-                  </div>
-                </Button>
+                
 
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-full h-auto p-4 justify-start"
-                  onClick={handleCashPayment}
-                >
+                <Button variant="outline" size="lg" className="w-full h-auto p-4 justify-start" onClick={handleCashPayment}>
                   <Banknote className="h-6 w-6 mr-3" />
                   <div className="text-left">
                     <div className="font-medium">Dinheiro Físico</div>
@@ -597,83 +560,66 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     </div>
                   </div>
                 </Button>
+
+                <Button variant="outline" size="lg" className="w-full h-auto p-4 justify-start" onClick={handlePagamentoMisto}>
+                  <DollarSign className="h-6 w-6 mr-3" />
+                  <div className="text-left">
+                    <div className="font-medium">Pagamento Misto</div>
+                    <div className="text-sm text-muted-foreground">
+                      Dinheiro + PIX
+                    </div>
+                  </div>
+                </Button>
               </div>
-            </div>
-          )}
+            </div>}
 
           {/* Formulário PIX */}
-          {step === 'pix-form' && (
-            <div className="space-y-4">
+          {step === 'pix-form' && <div className="space-y-4">
               <div className="flex items-center gap-2 mb-4">
                 <CreditCard className="h-5 w-5" />
                 <h3 className="font-medium">Dados do Pagador</h3>
               </div>
 
               {/* Dropdown de seleção de cliente */}
-              <ClientDropdownSelector
-                onClientSelected={handlePixClientSelected}
-                label="Selecionar cliente cadastrado (opcional):"
-                placeholder="Escolha um cliente ou preencha manualmente"
-              />
+              <ClientDropdownSelector onClientSelected={handlePixClientSelected} label="Selecionar cliente cadastrado (opcional):" placeholder="Escolha um cliente ou preencha manualmente" />
 
-              {selectedPixClientData && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearPixClientSelection}
-                  className="w-full"
-                >
+              {selectedPixClientData && <Button variant="outline" size="sm" onClick={clearPixClientSelection} className="w-full">
                   Limpar seleção e preencher manualmente
-                </Button>
-              )}
+                </Button>}
 
               <Separator />
 
               <div className="space-y-3">
                 <div>
                   <Label htmlFor="firstName">Nome</Label>
-                  <Input
-                    id="firstName"
-                    value={userData.firstName}
-                    onChange={(e) => setUserData(prev => ({ ...prev, firstName: e.target.value }))}
-                    placeholder="Nome"
-                    disabled={!!selectedPixClientData}
-                  />
+                  <Input id="firstName" value={userData.firstName} onChange={e => setUserData(prev => ({
+                ...prev,
+                firstName: e.target.value
+              }))} placeholder="Nome" disabled={!!selectedPixClientData} />
                 </div>
                 
                 <div>
                   <Label htmlFor="lastName">Sobrenome</Label>
-                  <Input
-                    id="lastName"
-                    value={userData.lastName}
-                    onChange={(e) => setUserData(prev => ({ ...prev, lastName: e.target.value }))}
-                    placeholder="Sobrenome"
-                    disabled={!!selectedPixClientData}
-                  />
+                  <Input id="lastName" value={userData.lastName} onChange={e => setUserData(prev => ({
+                ...prev,
+                lastName: e.target.value
+              }))} placeholder="Sobrenome" disabled={!!selectedPixClientData} />
                 </div>
                 
                 <div>
                   <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={userData.email}
-                    onChange={(e) => setUserData(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="email@exemplo.com"
-                    disabled={!!selectedPixClientData}
-                  />
+                  <Input id="email" type="email" value={userData.email} onChange={e => setUserData(prev => ({
+                ...prev,
+                email: e.target.value
+              }))} placeholder="email@exemplo.com" disabled={!!selectedPixClientData} />
                 </div>
                 
                 <div>
                   <Label htmlFor="cpf">CPF</Label>
-                  <Input
-                    id="cpf"
-                    value={userData.cpf}
-                    onChange={(e) => setUserData(prev => ({ ...prev, cpf: formatCPF(e.target.value) }))}
-                    placeholder="000.000.000-00"
-                    maxLength={14}
-                    disabled={!!selectedPixClientData}
-                  />
+                  <Input id="cpf" value={userData.cpf} onChange={e => setUserData(prev => ({
+                ...prev,
+                cpf: formatCPF(e.target.value)
+              }))} placeholder="000.000.000-00" maxLength={14} disabled={!!selectedPixClientData} />
                 </div>
               </div>
 
@@ -685,21 +631,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   {loading ? 'Gerando...' : 'Gerar PIX'}
                 </Button>
               </div>
-            </div>
-          )}
+            </div>}
 
           {/* Tela de pagamento PIX */}
-          {step === 'pix-payment' && paymentData && (
-            <div className="space-y-4 text-center">
+          {step === 'pix-payment' && paymentData && <div className="space-y-4 text-center">
               <div className="flex items-center justify-center gap-2">
                 {paymentStatus === 'pending' && <Clock className="h-5 w-5 text-yellow-500" />}
                 {paymentStatus === 'approved' && <CheckCircle className="h-5 w-5 text-green-500" />}
                 {(paymentStatus === 'rejected' || paymentStatus === 'cancelled') && <XCircle className="h-5 w-5 text-red-500" />}
                 
-                <Badge variant={
-                  paymentStatus === 'approved' ? 'default' :
-                  paymentStatus === 'pending' ? 'secondary' : 'destructive'
-                }>
+                <Badge variant={paymentStatus === 'approved' ? 'default' : paymentStatus === 'pending' ? 'secondary' : 'destructive'}>
                   {paymentStatus === 'pending' && 'Aguardando Pagamento'}
                   {paymentStatus === 'approved' && 'Pagamento Aprovado'}
                   {paymentStatus === 'rejected' && 'Pagamento Rejeitado'}
@@ -707,18 +648,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </Badge>
               </div>
 
-              {paymentStatus === 'pending' && (
-                <>
+              {paymentStatus === 'pending' && <>
                   <div className="flex justify-center">
                     <GeneratedQRCode qrText={paymentData.qr_code} />
                   </div>
                   
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={copyPixCode}
-                    className="w-full"
-                  >
+                  <Button variant="outline" size="sm" onClick={copyPixCode} className="w-full">
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar código PIX
                   </Button>
@@ -726,18 +661,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   <p className="text-sm text-muted-foreground">
                     Aguardando confirmação do pagamento...
                   </p>
-                </>
-              )}
+                </>}
 
               <Button variant="outline" onClick={handleClose}>
                 Cancelar
               </Button>
-            </div>
-          )}
+            </div>}
 
           {/* Confirmação pagamento em dinheiro */}
-          {step === 'cash-confirm' && selectedClientData && (
-            <div className="space-y-4">
+          {step === 'cash-confirm' && selectedClientData && <div className="space-y-4">
               <h3 className="font-medium">Confirmar pagamento em dinheiro</h3>
               
               <Card className="bg-muted/50">
@@ -763,16 +695,34 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   Confirmar Pagamento
                 </Button>
               </div>
-            </div>
-          )}
+            </div>}
         </DialogContent>
       </Dialog>
 
-      <ClientSelectionModal
-        isOpen={clientSelectionOpen}
-        onClose={() => setClientSelectionOpen(false)}
-        onClientSelected={handleClientSelected}
+      <ClientSelectionModal 
+        isOpen={clientSelectionOpen} 
+        onClose={() => {
+          setClientSelectionOpen(false);
+          setTipoPagamentoSelecionado(null);
+        }} 
+        onClientSelected={(clienteData) => {
+          setSelectedClientData(clienteData);
+          setClientSelectionOpen(false);
+          
+          if (tipoPagamentoSelecionado === 'misto') {
+            setPagamentoMistoOpen(true);
+          } else {
+            setStep('cash-confirm');
+          }
+          setTipoPagamentoSelecionado(null);
+        }} 
       />
-    </>
-  );
+
+      <PagamentoMistoModal
+        open={pagamentoMistoOpen}
+        onOpenChange={setPagamentoMistoOpen}
+        valorTotal={total}
+        onConfirmar={handleConfirmarPagamentoMisto}
+      />
+    </>;
 };

@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { doc, setDoc, collection } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 
 interface NotificationOptions {
   title: string;
@@ -18,25 +15,6 @@ export const useNotifications = (userId?: string) => {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isSupported, setIsSupported] = useState(false);
   const [isMobileNative, setIsMobileNative] = useState(false);
-  const [fcmToken, setFcmToken] = useState<string | null>(null);
-
-  // Função para salvar token FCM no Firestore
-  const saveFCMToken = async (token: string, userId: string) => {
-    try {
-      const tokenRef = doc(collection(db, 'device_tokens'), `${userId}_${token.substring(0, 10)}`);
-      await setDoc(tokenRef, {
-        userId,
-        token,
-        platform: Capacitor.getPlatform(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }, { merge: true });
-      
-      console.log('Token FCM salvo com sucesso:', token);
-    } catch (error) {
-      console.error('Erro ao salvar token FCM:', error);
-    }
-  };
 
   useEffect(() => {
     // Detectar se está rodando em ambiente nativo (iOS ou Android)
@@ -47,41 +25,15 @@ export const useNotifications = (userId?: string) => {
       // Para plataformas nativas, sempre é suportado
       setIsSupported(true);
       
-      // Verificar permissões no mobile
-      PushNotifications.checkPermissions().then(result => {
-        if (result.receive === 'granted') {
+      // Verificar permissões de notificações locais
+      LocalNotifications.checkPermissions().then(result => {
+        if (result.display === 'granted') {
           setPermission('granted');
-        } else if (result.receive === 'denied') {
+        } else if (result.display === 'denied') {
           setPermission('denied');
         } else {
           setPermission('default');
         }
-      });
-
-      // Configurar listeners para notificações push
-      PushNotifications.addListener('registration', (token) => {
-        console.log('Token de push recebido:', token.value);
-        setFcmToken(token.value);
-        
-        // Salvar token no Firestore se tivermos o userId
-        if (userId) {
-          saveFCMToken(token.value, userId);
-        }
-      });
-
-      PushNotifications.addListener('registrationError', (error) => {
-        console.error('Erro ao registrar para push:', error);
-      });
-
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('Notificação recebida:', notification);
-        toast(notification.title || 'Nova notificação', {
-          description: notification.body,
-        });
-      });
-
-      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-        console.log('Notificação clicada:', notification);
       });
     } else {
       // Para web, verificar API de notificações do navegador
@@ -91,14 +43,7 @@ export const useNotifications = (userId?: string) => {
         setPermission(Notification.permission);
       }
     }
-
-    // Cleanup listeners
-    return () => {
-      if (isNative) {
-        PushNotifications.removeAllListeners();
-      }
-    };
-  }, [userId]);
+  }, []);
 
   const requestPermission = async (): Promise<NotificationPermission> => {
     if (!isSupported) {
@@ -108,16 +53,10 @@ export const useNotifications = (userId?: string) => {
 
     try {
       if (isMobileNative) {
-        // Solicitar permissões para notificações push nativas
-        const pushResult = await PushNotifications.requestPermissions();
-        
         // Solicitar permissões para notificações locais
         const localResult = await LocalNotifications.requestPermissions();
         
-        if (pushResult.receive === 'granted' && localResult.display === 'granted') {
-          // Registrar para receber notificações push
-          await PushNotifications.register();
-          
+        if (localResult.display === 'granted') {
           setPermission('granted');
           toast.success('Permissão para notificações concedida!');
           return 'granted';
@@ -147,36 +86,103 @@ export const useNotifications = (userId?: string) => {
   };
 
   const showNotification = async (options: NotificationOptions) => {
-    // Sempre mostrar toast na tela
+    // 1. SEMPRE mostrar toast na tela primeiro
     toast(options.title, {
       description: options.body,
     });
 
-    // Se tiver permissão, mostrar também notificação
-    if (permission === 'granted' && isSupported) {
-      try {
-        if (isMobileNative) {
-          // Para dispositivos móveis nativos, usar LocalNotifications
-          await LocalNotifications.schedule({
-            notifications: [
-              {
+    console.log('🔔 [useNotifications] Tentando enviar notificação push...', { 
+      permission, 
+      isSupported, 
+      isMobileNative,
+      hasServiceWorker: 'serviceWorker' in navigator,
+      hasController: navigator.serviceWorker?.controller ? 'sim' : 'não'
+    });
+
+    // 2. Se NÃO tiver permissão, apenas retornar (já mostrou o toast)
+    if (permission !== 'granted' || !isSupported) {
+      console.log('⚠️ [useNotifications] Notificação push não enviada (sem permissão):', {
+        hasPermission: permission === 'granted',
+        isSupported,
+        permission
+      });
+      return;
+    }
+
+    // 3. SEMPRE enviar notificação push (Android ou Windows)
+    try {
+      if (isMobileNative) {
+        // ========== ANDROID NATIVO (LocalNotifications) ==========
+        console.log('📱 [useNotifications] Enviando notificação local (mobile Android)');
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title: options.title,
+              body: options.body || '',
+              id: Date.now(), // ID único baseado em timestamp
+              schedule: { at: new Date(Date.now() + 100) }, // Mostrar imediatamente (100ms delay)
+              sound: undefined,
+              attachments: undefined,
+              actionTypeId: '',
+              extra: { tag: options.tag }
+            }
+          ]
+        });
+        console.log('✅ [useNotifications] Notificação Android enviada com sucesso');
+      } else {
+        // ========== WINDOWS/WEB (Web Notification API) ==========
+        console.log('🌐 [useNotifications] Enviando notificação web (Windows)');
+        
+        // Verificar se Service Worker está ativo e pronto
+        if ('serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.ready;
+          console.log('🔧 [useNotifications] Service Worker ready:', registration);
+          
+          if (navigator.serviceWorker.controller) {
+            // Usar Service Worker para notificações em background
+            console.log('🔧 [useNotifications] Usando Service Worker para notificação');
+            
+            // Enviar mensagem ao Service Worker
+            navigator.serviceWorker.controller.postMessage({
+              type: 'SHOW_NOTIFICATION',
+              payload: {
                 title: options.title,
-                body: options.body || '',
-                id: Date.now(),
-                schedule: { at: new Date(Date.now() + 100) }, // Mostrar imediatamente
-                sound: undefined,
-                attachments: undefined,
-                actionTypeId: '',
-                extra: { tag: options.tag }
+                body: options.body,
+                icon: options.icon || '/favicon.png',
+                tag: options.tag || `notification-${Date.now()}`,
+                requireInteraction: options.requireInteraction || false,
               }
-            ]
-          });
+            });
+            
+            console.log('✅ [useNotifications] Mensagem enviada ao Service Worker');
+          } else {
+            // Service Worker não está controlando a página ainda
+            console.log('⚠️ [useNotifications] Service Worker não está controlando a página, usando API direta');
+            
+            const notification = new Notification(options.title, {
+              body: options.body,
+              icon: options.icon || '/favicon.png',
+              tag: options.tag || `notification-${Date.now()}`,
+              requireInteraction: options.requireInteraction || false,
+            });
+
+            // Auto-fechar após 5 segundos se não for interativa
+            if (!options.requireInteraction) {
+              setTimeout(() => {
+                notification.close();
+              }, 5000);
+            }
+            
+            console.log('✅ [useNotifications] Notificação enviada via API direta');
+          }
         } else {
-          // Para web, usar API do navegador
+          // Navegador não suporta Service Workers
+          console.log('⚠️ [useNotifications] Service Worker não suportado, usando API direta');
+          
           const notification = new Notification(options.title, {
             body: options.body,
-            icon: options.icon || '/favicon.ico',
-            tag: options.tag,
+            icon: options.icon || '/favicon.png',
+            tag: options.tag || `notification-${Date.now()}`,
             requireInteraction: options.requireInteraction || false,
           });
 
@@ -186,12 +192,13 @@ export const useNotifications = (userId?: string) => {
               notification.close();
             }, 5000);
           }
-
-          return notification;
+          
+          console.log('✅ [useNotifications] Notificação enviada via API direta (sem SW)');
         }
-      } catch (error) {
-        console.error('Erro ao mostrar notificação:', error);
       }
+    } catch (error) {
+      console.error('❌ [useNotifications] Erro ao mostrar notificação push:', error);
+      toast.error('Erro ao enviar notificação push');
     }
   };
 
@@ -248,13 +255,11 @@ export const useNotifications = (userId?: string) => {
     permission,
     isSupported,
     isMobileNative,
-    fcmToken,
     requestPermission,
     showNotification,
     showSuccess,
     showError,
     showWarning,
     showInfo,
-    saveFCMToken,
   };
 };

@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, addDoc, deleteDoc, getDoc, limit, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useAuth } from "@/contexts/AuthContext";
-import { useQueueAutomation } from "@/contexts/QueueAutomationContext";
+import { useAuth } from '@/contexts/AuthContext';
+import { useQueueAutomation } from '@/contexts/QueueAutomationContext';
 import Layout from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,8 @@ import { UltimosAgendamentos } from "@/components/UltimosAgendamentos";
 import { NotificarClienteModal } from "@/components/NotificarClienteModal";
 import { PagamentosPendentesButton } from "@/components/PagamentosPendentesButton";
 import { useToast } from "@/hooks/use-toast";
+import { useNotifications } from "@/hooks/useNotifications";
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Clock, Users, CheckCircle, AlertCircle, User, Scissors, ChevronRight, Calendar, TrendingUp, Star, Check, Timer, UserCheck, Play, Pause, CreditCard, Banknote, Palette, Sparkles, Zap, Heart, Ruler, Copy, MessageSquare } from "lucide-react";
 import { format, differenceInSeconds, addMinutes, isAfter, parse, isToday, isSameDay, startOfDay, endOfDay, isBefore } from "date-fns";
@@ -69,6 +71,13 @@ const Queue = () => {
     toast
   } = useToast();
   
+  // Hook de notificações
+  const { requestPermission, showNotification, permission } = useNotifications(currentUser?.uid);
+  
+  // Usar useRef para manter os Sets de IDs notificados entre renders
+  const notifiedNewIdsRef = useRef(new Set<string>());
+  const notifiedStartIdsRef = useRef(new Set<string>());
+  
   // Consumir dados do context de automação
   const {
     queueData,
@@ -121,6 +130,8 @@ const Queue = () => {
   } | null>(null);
   const timeRef = useRef<NodeJS.Timeout | null>(null);
   const [blinkingOpacity, setBlinkingOpacity] = useState(1);
+  const notificationsInitialRef = useRef(true);
+  
   useEffect(() => {
     const updateDateTime = () => {
       const now = new Date();
@@ -139,6 +150,85 @@ const Queue = () => {
       }
     };
   }, []);
+
+  // Solicitar permissão automaticamente ao carregar a página
+  useEffect(() => {
+    if (permission === 'default') {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
+
+  // Notificações para novos agendamentos e início de atendimento
+  useEffect(() => {
+    const q = query(
+      collection(db, 'fila'),
+      where('status', 'in', ['confirmado', 'em_atendimento']),
+      orderBy('status'),
+      orderBy('timestamp', 'asc')
+    );
+
+    console.log('🔔 Configurando listener de notificações');
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      // Ignora o primeiro snapshot (itens já existentes)
+      if (notificationsInitialRef.current) {
+        console.log('📋 Marcando documentos existentes como já notificados');
+        // Marca todos os IDs existentes como já notificados
+        snapshot.docs.forEach(doc => {
+          notifiedNewIdsRef.current.add(doc.id);
+          if (doc.data().status === 'em_atendimento') {
+            notifiedStartIdsRef.current.add(doc.id);
+          }
+        });
+        notificationsInitialRef.current = false;
+        return;
+      }
+
+      snapshot.docChanges().forEach((change) => {
+        const data: any = change.doc.data();
+        const docId = change.doc.id;
+
+        console.log(`🔄 Mudança detectada: ${change.type} - ${docId} - Status: ${data.status}`);
+
+        // Notificação para NOVO agendamento (added)
+        if (change.type === 'added' && data.status === 'confirmado' && !notifiedNewIdsRef.current.has(docId)) {
+          notifiedNewIdsRef.current.add(docId);
+
+          let inicio: Date | null = null;
+          if (data.tempo_inicio?.toDate) {
+            inicio = data.tempo_inicio.toDate();
+          } else if (data.tempo_inicio instanceof Date) {
+            inicio = data.tempo_inicio;
+          }
+          const hora = inicio ? format(inicio, 'HH:mm', { locale: ptBR }) : '--:--';
+
+          console.log(`🔔 Enviando notificação de novo agendamento: ${data.usuario_nome}`);
+          showNotification({
+            title: 'Novo Agendamento na Fila',
+            body: `${data.usuario_nome} acabou de entrar na fila para ser realizado o serviço ${data.servico_nome || data.servico_tipo} às ${hora}`,
+            tag: `novo-${docId}-${Date.now()}`, // ID único com timestamp
+          });
+        }
+
+        // Notificação para INÍCIO de atendimento (modified)
+        if (change.type === 'modified' && data.status === 'em_atendimento' && !notifiedStartIdsRef.current.has(docId)) {
+          notifiedStartIdsRef.current.add(docId);
+
+          console.log(`🔔 Enviando notificação de início de atendimento: ${data.usuario_nome}`);
+          showNotification({
+            title: 'Atendimento Iniciado',
+            body: `${data.usuario_nome} - ${data.servico_nome || data.servico_tipo} começou a ser atendido`,
+            tag: `inicio-${docId}-${Date.now()}`, // ID único com timestamp
+          });
+        }
+      });
+    });
+
+    return () => {
+      console.log('🛑 Limpando listener de notificações');
+      unsubscribe();
+    };
+  }, []); // Sem dependências - showNotification é estável
 
   // Efeito para a animação de piscar
   useEffect(() => {

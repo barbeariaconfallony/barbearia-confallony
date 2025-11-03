@@ -524,15 +524,6 @@ const BookingMobile = () => {
 
       await addDoc(collection(db, 'fila'), newAppointment);
 
-      // Notificar admins sobre novo agendamento
-      const { notifyAdminsNewQueue } = await import('@/utils/notify-admins');
-      notifyAdminsNewQueue({
-        clienteNome: userName,
-        servicoNome: selectedService.nome,
-        dataAgendamento: appointmentDate,
-        appointmentId: 'mobile-booking'
-      }).catch(error => console.error('Erro ao notificar admins:', error));
-
       toast({
         title: "Agendamento confirmado!",
         description: `Agendamento salvo com sucesso para ${userName}.`

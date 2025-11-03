@@ -4,7 +4,6 @@ import Layout from "@/components/layout/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Calendar, Clock } from "lucide-react";
-import { sendPaymentSuccessNotification } from "@/utils/send-payment-notification";
 
 const PaymentSuccess = () => {
   const navigate = useNavigate();
@@ -14,18 +13,6 @@ const PaymentSuccess = () => {
   const service = searchParams.get('service');
   const date = searchParams.get('date');
   const time = searchParams.get('time');
-
-  useEffect(() => {
-    // Enviar notificação push quando página carregar
-    if (service && date && time) {
-      sendPaymentSuccessNotification({
-        service,
-        date,
-        time,
-        appointmentId: appointmentId || undefined,
-      });
-    }
-  }, [service, date, time, appointmentId]);
 
   useEffect(() => {
     // Auto redirect after 10 seconds

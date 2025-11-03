@@ -2,7 +2,6 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Settings, Home } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { NotificationPermissionButton } from '@/components/NotificationPermissionButton';
 import logoWhite from '@/assets/confallony-logo-white.png';
 
 export const Header: React.FC = () => {
@@ -25,8 +24,6 @@ export const Header: React.FC = () => {
           </div>
 
           <nav className="flex items-center gap-2">
-            <NotificationPermissionButton />
-            
             {location.pathname !== '/' && (
               <Button 
                 variant="ghost" 

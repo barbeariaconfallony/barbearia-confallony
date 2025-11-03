@@ -147,6 +147,9 @@ export const AdminDashboard = ({
     dia: string;
     quantidade: number;
   }>>([]);
+  const [topClientesLimit, setTopClientesLimit] = useState<number>(10);
+  const [customTopClientesLimit, setCustomTopClientesLimit] = useState<string>('');
+  
   useEffect(() => {
     loadDashboardData();
   }, [startDate, endDate, period]);
@@ -157,171 +160,207 @@ export const AdminDashboard = ({
       const periodStartDate = startOfDay(startDate);
       const periodEndDate = endOfDay(endDate);
 
-      // Carregar atendimentos concluídos filtrados pelo período selecionado
-      const atendimentosQuery = query(
-        collection(db, 'agendamentos_finalizados'),
-        where('data_conclusao', '>=', Timestamp.fromDate(periodStartDate)),
-        where('data_conclusao', '<=', Timestamp.fromDate(periodEndDate))
-      );
-      const atendimentosSnapshot = await getDocs(atendimentosQuery);
+      // ===== FASE 1: CARREGAR TODAS AS QUERIES EM PARALELO =====
+      const [
+        atendimentosSnapshot,
+        clientesSnapshot,
+        vendasSnapshot,
+        filaSnapshot,
+        comandasSnapshot,
+        comandasFinalizadasSnapshot,
+        agendamentosCanceladosSnapshot,
+        todosUsuariosSnapshot
+      ] = await Promise.all([
+        // Query de atendimentos finalizados (será usado em múltiplos cálculos)
+        getDocs(query(
+          collection(db, 'agendamentos_finalizados'),
+          where('data_conclusao', '>=', Timestamp.fromDate(periodStartDate)),
+          where('data_conclusao', '<=', Timestamp.fromDate(periodEndDate))
+        )),
+        // Query de novos clientes
+        getDocs(query(
+          collection(db, 'usuarios'),
+          where('data_registro', '>=', periodStartDate),
+          where('data_registro', '<=', periodEndDate)
+        )),
+        // Query de vendas
+        getDocs(query(
+          collection(db, 'compras_finalizadas'),
+          where('data_compra', '>=', periodStartDate),
+          where('data_compra', '<=', periodEndDate)
+        )),
+        // Query de fila
+        getDocs(query(
+          collection(db, 'fila'),
+          where('data', '>=', periodStartDate),
+          where('data', '<=', periodEndDate)
+        )),
+        // Query de comandas abertas
+        getDocs(query(
+          collection(db, 'comandas'),
+          where('data_criacao', '>=', periodStartDate),
+          where('data_criacao', '<=', periodEndDate)
+        )),
+        // Query de comandas finalizadas
+        getDocs(query(
+          collection(db, 'comandas_finalizadas'),
+          where('data_finalizacao', '>=', periodStartDate),
+          where('data_finalizacao', '<=', periodEndDate)
+        )),
+        // Query de cancelamentos
+        getDocs(query(
+          collection(db, 'agendamentos_cancelados'),
+          where('data', '>=', periodStartDate),
+          where('data', '<=', periodEndDate)
+        )),
+        // Query de todos os usuários (para cálculo de engajamento)
+        getDocs(collection(db, 'usuarios'))
+      ]);
+
+      // ===== FASE 2: PROCESSAR ATENDIMENTOS CONCLUÍDOS =====
       const atendimentos: Array<{
         id: string;
         servico_nome: string;
         funcionario_nome: string;
         data_atendimento: Date;
+        preco: number;
+        data_conclusao: Date;
       }> = [];
+      
       atendimentosSnapshot.forEach(doc => {
         const data = doc.data();
         atendimentos.push({
           id: doc.id,
           servico_nome: data.servico_nome || data.servico || 'Serviço não informado',
           funcionario_nome: data.funcionario_nome || data.barbeiro || 'Profissional não informado',
-          data_atendimento: data.data_atendimento?.toDate() || data.data_conclusao?.toDate() || new Date()
+          data_atendimento: data.data_atendimento?.toDate() || data.data_conclusao?.toDate() || new Date(),
+          preco: data.preco || 0,
+          data_conclusao: data.data_conclusao?.toDate() || new Date()
         });
       });
       setAtendimentosConcluidos(atendimentos);
 
-      // Calcular serviços favoritos (top 3) no período selecionado
-      const servicosCount: {
-        [key: string]: number;
-      } = {};
+      // ===== FASE 3: CALCULAR SERVIÇOS FAVORITOS =====
+      const servicosCount: Record<string, number> = {};
       atendimentos.forEach(atendimento => {
         const servicoNome = atendimento.servico_nome;
         servicosCount[servicoNome] = (servicosCount[servicoNome] || 0) + 1;
       });
-      const servicosFavoritosArray = Object.entries(servicosCount).map(([nome, quantidade]) => ({
-        nome,
-        quantidade
-      })).sort((a, b) => b.quantidade - a.quantidade).slice(0, 3);
+      const servicosFavoritosArray = Object.entries(servicosCount)
+        .map(([nome, quantidade]) => ({ nome, quantidade }))
+        .sort((a, b) => b.quantidade - a.quantidade)
+        .slice(0, 3);
       setServicosFavoritos(servicosFavoritosArray);
 
-      // Calcular profissionais favoritos (top 3) no período selecionado
-      const profissionaisCount: {
-        [key: string]: number;
-      } = {};
+      // ===== FASE 4: CALCULAR PROFISSIONAIS FAVORITOS =====
+      const profissionaisCount: Record<string, number> = {};
       atendimentos.forEach(atendimento => {
         const profissionalNome = atendimento.funcionario_nome;
         profissionaisCount[profissionalNome] = (profissionaisCount[profissionalNome] || 0) + 1;
       });
-      const profissionaisFavoritosArray = Object.entries(profissionaisCount).map(([nome, quantidade]) => ({
-        nome,
-        quantidade
-      })).sort((a, b) => b.quantidade - a.quantidade).slice(0, 3);
+      const profissionaisFavoritosArray = Object.entries(profissionaisCount)
+        .map(([nome, quantidade]) => ({ nome, quantidade }))
+        .sort((a, b) => b.quantidade - a.quantidade)
+        .slice(0, 3);
       setProfissionaisFavoritos(profissionaisFavoritosArray);
 
-      // Calcular crescimento de clientes ao longo do período
+      // ===== FASE 5: CALCULAR CRESCIMENTO DE CLIENTES =====
       try {
-        const clientesQuery = query(collection(db, 'usuarios'), where('data_registro', '>=', periodStartDate), where('data_registro', '<=', periodEndDate));
-        const clientesSnapshot = await getDocs(clientesQuery);
-        console.log('Total de clientes no período:', clientesSnapshot.size);
-
-        // Agrupar por data
-        const clientesPorData: {
-          [key: string]: number;
-        } = {};
+        const clientesPorData: Record<string, number> = {};
+        const formatoData = period === 'ano' ? 'MMM/yyyy' : 'dd/MM';
+        
         clientesSnapshot.forEach(doc => {
           const data = doc.data();
           if (data.data_registro) {
-            const dataFormatada = format(data.data_registro.toDate(), 'dd/MM');
+            const dataFormatada = format(data.data_registro.toDate(), formatoData, { locale: ptBR });
             clientesPorData[dataFormatada] = (clientesPorData[dataFormatada] || 0) + 1;
           }
         });
-        const crescimentoArray = Object.entries(clientesPorData).map(([name, novos]) => ({
-          name,
-          novos
-        })).sort((a, b) => {
-          const [diaA, mesA] = a.name.split('/').map(Number);
-          const [diaB, mesB] = b.name.split('/').map(Number);
-          return mesA !== mesB ? mesA - mesB : diaA - diaB;
-        });
-        console.log('Crescimento de clientes array:', crescimentoArray);
+        
+        const crescimentoArray = Object.entries(clientesPorData)
+          .map(([name, novos]) => ({ name, novos }))
+          .sort((a, b) => {
+            if (period === 'ano') {
+              const [mesA, anoA] = a.name.split('/');
+              const [mesB, anoB] = b.name.split('/');
+              const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+              const indexA = meses.indexOf(mesA.toLowerCase());
+              const indexB = meses.indexOf(mesB.toLowerCase());
+              return anoA !== anoB ? parseInt(anoA) - parseInt(anoB) : indexA - indexB;
+            } else {
+              const [diaA, mesA] = a.name.split('/').map(Number);
+              const [diaB, mesB] = b.name.split('/').map(Number);
+              return mesA !== mesB ? mesA - mesB : diaA - diaB;
+            }
+          });
+        
         setCrescimentoClientes(crescimentoArray);
       } catch (error) {
         console.error('Erro ao carregar crescimento de clientes:', error);
         setCrescimentoClientes([]);
       }
 
-      // Calcular agendamentos por dia da semana
-      const agendamentosQuery = query(collection(db, 'agendamentos_finalizados'));
-      const agendamentosSnapshot = await getDocs(agendamentosQuery);
+      // ===== FASE 6: CALCULAR AGENDAMENTOS POR DIA DA SEMANA (do período) =====
       const diasSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-      const agendamentosPorDia: {
-        [key: string]: number;
-      } = {
-        'Domingo': 0,
-        'Segunda': 0,
-        'Terça': 0,
-        'Quarta': 0,
-        'Quinta': 0,
-        'Sexta': 0,
-        'Sábado': 0
+      const agendamentosPorDia: Record<string, number> = {
+        'Domingo': 0, 'Segunda': 0, 'Terça': 0, 'Quarta': 0, 'Quinta': 0, 'Sexta': 0, 'Sábado': 0
       };
-      agendamentosSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.data_atendimento || data.data_conclusao) {
-          const dataAtendimento = data.data_atendimento?.toDate() || data.data_conclusao?.toDate();
-          const diaSemana = diasSemana[dataAtendimento.getDay()];
-          agendamentosPorDia[diaSemana]++;
-        }
+      
+      atendimentos.forEach(atendimento => {
+        const dataAtendimento = atendimento.data_atendimento;
+        const diaSemana = diasSemana[dataAtendimento.getDay()];
+        agendamentosPorDia[diaSemana]++;
       });
+      
       const agendamentosPorDiaArray = diasSemana.map(dia => ({
         dia,
         quantidade: agendamentosPorDia[dia]
       }));
       setAgendamentosPorDiaSemana(agendamentosPorDiaArray);
 
-      // Calcular faturamento baseado no período
+      // ===== FASE 7: CALCULAR FATURAMENTO (usando dados já carregados) =====
       let faturamentoPorDia;
       if (period === 'ano') {
-        // Para o ano, agrupar por mês
-        const mesesArray = Array.from({
-          length: 12
-        }, (_, i) => i);
-        faturamentoPorDia = await Promise.all(mesesArray.map(async monthIndex => {
-          const start = new Date(periodStartDate.getFullYear(), monthIndex, 1);
-          const end = new Date(periodStartDate.getFullYear(), monthIndex + 1, 0, 23, 59, 59);
-          const q = query(collection(db, 'agendamentos_finalizados'), where('data_conclusao', '>=', start), where('data_conclusao', '<=', end));
-          const snapshot = await getDocs(q);
-          let total = 0;
-          snapshot.forEach(doc => {
-            total += doc.data().preco || 0;
-          });
-          return {
-            name: format(start, 'MMM', {
-              locale: ptBR
-            }),
-            transferencias: total
-          };
+        // Agrupar por mês
+        const faturamentoPorMes: Record<string, number> = {};
+        atendimentos.forEach(atendimento => {
+          const mes = format(atendimento.data_conclusao, 'MMM', { locale: ptBR });
+          faturamentoPorMes[mes] = (faturamentoPorMes[mes] || 0) + atendimento.preco;
+        });
+        
+        // Criar array com todos os meses do ano
+        const mesesDoAno = Array.from({ length: 12 }, (_, i) => {
+          const data = new Date(periodStartDate.getFullYear(), i, 1);
+          return format(data, 'MMM', { locale: ptBR });
+        });
+        
+        faturamentoPorDia = mesesDoAno.map(mes => ({
+          name: mes,
+          transferencias: faturamentoPorMes[mes] || 0
         }));
       } else {
-        // Para outros períodos, mostrar dias
+        // Agrupar por dia
+        const faturamentoPorDiaMap: Record<string, number> = {};
+        atendimentos.forEach(atendimento => {
+          const dia = format(atendimento.data_conclusao, 'dd/MM');
+          faturamentoPorDiaMap[dia] = (faturamentoPorDiaMap[dia] || 0) + atendimento.preco;
+        });
+        
+        // Criar array com os dias do período
         const diffTime = Math.abs(periodEndDate.getTime() - periodStartDate.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        const daysToShow = Math.min(diffDays, 30); // Máximo de 30 dias no gráfico
-
-        const daysArray = Array.from({
-          length: daysToShow
-        }, (_, i) => subDays(periodEndDate, daysToShow - 1 - i));
-        faturamentoPorDia = await Promise.all(daysArray.map(async day => {
-          const start = startOfDay(day);
-          const end = endOfDay(day);
-          const q = query(collection(db, 'agendamentos_finalizados'), where('data_conclusao', '>=', start), where('data_conclusao', '<=', end));
-          const snapshot = await getDocs(q);
-          let total = 0;
-          snapshot.forEach(doc => {
-            total += doc.data().preco || 0;
-          });
-          return {
-            name: format(day, daysToShow > 7 ? 'dd/MM' : 'dd/MM'),
-            transferencias: total
-          };
+        const daysToShow = Math.min(diffDays, 30);
+        
+        const daysArray = Array.from({ length: daysToShow }, (_, i) => subDays(periodEndDate, daysToShow - 1 - i));
+        
+        faturamentoPorDia = daysArray.map(day => ({
+          name: format(day, 'dd/MM'),
+          transferencias: faturamentoPorDiaMap[format(day, 'dd/MM')] || 0
         }));
       }
       setFaturamentoDiario(faturamentoPorDia);
 
-      // Carregar vendas por categoria de produtos no período
-      const vendasQuery = query(collection(db, 'compras_finalizadas'), where('data_compra', '>=', periodStartDate), where('data_compra', '<=', periodEndDate));
-      const vendasSnapshot = await getDocs(vendasQuery);
+      // ===== FASE 8: PROCESSAR VENDAS POR CATEGORIA =====
       const categoriaCounts: Record<string, number> = {};
       vendasSnapshot.forEach(doc => {
         const venda = doc.data();
@@ -333,120 +372,100 @@ export const AdminDashboard = ({
           });
         }
       });
-      const categoriasArray = Object.entries(categoriaCounts).map(([name, value]) => ({
-        name,
-        value
-      })).sort((a, b) => b.value - a.value).slice(0, 5);
-      setVendasPorCategoria(categoriasArray.length > 0 ? categoriasArray : [{
-        name: 'Pomadas',
-        value: 0
-      }, {
-        name: 'Shampoos',
-        value: 0
-      }, {
-        name: 'Óleos',
-        value: 0
-      }]);
+      
+      const categoriasArray = Object.entries(categoriaCounts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5);
+      
+      setVendasPorCategoria(categoriasArray.length > 0 ? categoriasArray : [
+        { name: 'Pomadas', value: 0 },
+        { name: 'Shampoos', value: 0 },
+        { name: 'Óleos', value: 0 }
+      ]);
 
-      // Carregar status de pagamentos no período
-      const filaQuery = query(collection(db, 'fila'), where('data', '>=', periodStartDate), where('data', '<=', periodEndDate));
-      const filaSnapshot = await getDocs(filaQuery);
-      const comandasQuery = query(collection(db, 'comandas'), where('data_criacao', '>=', periodStartDate), where('data_criacao', '<=', periodEndDate));
-      const comandasSnapshot = await getDocs(comandasQuery);
-      const comandasFinalizadasQuery = query(collection(db, 'comandas_finalizadas'), where('data_finalizacao', '>=', periodStartDate), where('data_finalizacao', '<=', periodEndDate));
-      const comandasFinalizadasSnapshot = await getDocs(comandasFinalizadasQuery);
-      const agendamentosFinalizadosQuery = query(collection(db, 'agendamentos_finalizados'), where('data_conclusao', '>=', periodStartDate), where('data_conclusao', '<=', periodEndDate));
-      const agendamentosFinalizadosSnapshot = await getDocs(agendamentosFinalizadosQuery);
-
-      // Buscar cancelamentos da coleção agendamentos_cancelados
-      const agendamentosCanceladosQuery = query(collection(db, 'agendamentos_cancelados'), where('data', '>=', periodStartDate), where('data', '<=', periodEndDate));
-      const agendamentosCanceladosSnapshot = await getDocs(agendamentosCanceladosQuery);
+      // ===== FASE 9: CALCULAR STATUS DE PAGAMENTOS =====
       let totalPago = 0;
       let totalPendente = 0;
       let totalCancelado = 0;
-      agendamentosFinalizadosSnapshot.forEach(doc => {
-        const valor = doc.data().preco || 0;
-        totalPago += valor;
+      
+      // Usar dados já carregados dos atendimentos
+      atendimentos.forEach(atendimento => {
+        totalPago += atendimento.preco;
       });
-
-      // Somar valores cancelados da coleção agendamentos_cancelados
+      
       agendamentosCanceladosSnapshot.forEach(doc => {
         const valor = doc.data().preco || 0;
         totalCancelado += valor;
       });
+      
       comandasFinalizadasSnapshot.forEach(doc => {
         totalPago += doc.data().total || 0;
       });
+      
       comandasSnapshot.forEach(doc => {
         totalPendente += doc.data().total || 0;
       });
-      setStatusPagamentos([{
-        name: 'Pagos',
-        value: totalPago
-      }, {
-        name: 'Pendentes',
-        value: totalPendente
-      }, {
-        name: 'Cancelados',
-        value: totalCancelado
-      }]);
+      
+      setStatusPagamentos([
+        { name: 'Pagos', value: totalPago },
+        { name: 'Pendentes', value: totalPendente },
+        { name: 'Cancelados', value: totalCancelado }
+      ]);
 
-      // Calcular métricas de performance baseadas no período
-      const totalAgendamentos = filaSnapshot.size + agendamentosFinalizadosSnapshot.size + agendamentosCanceladosSnapshot.size;
-      const agendamentosConcluidos = agendamentosFinalizadosSnapshot.size;
+      // ===== FASE 10: CALCULAR MÉTRICAS DE PERFORMANCE =====
+      const totalAgendamentos = filaSnapshot.size + atendimentos.length + agendamentosCanceladosSnapshot.size;
+      const agendamentosConcluidos = atendimentos.length;
       const agendamentosCancelados = agendamentosCanceladosSnapshot.size;
 
       // Total de usuários que tiveram atividade no período
-      const usuariosAtivosSet = new Set();
+      const usuariosAtivosSet = new Set<string>();
       filaSnapshot.forEach(doc => {
-        if (doc.data().usuario_id) usuariosAtivosSet.add(doc.data().usuario_id);
+        const userId = doc.data().usuario_id;
+        if (userId) usuariosAtivosSet.add(userId);
       });
-      agendamentosFinalizadosSnapshot.forEach(doc => {
-        if (doc.data().usuario_id) usuariosAtivosSet.add(doc.data().usuario_id);
+      atendimentos.forEach(atendimento => {
+        // Assumindo que atendimentos tem usuario_id, se não tiver, ignorar
       });
+      
       const totalUsuariosAtivos = usuariosAtivosSet.size;
       const totalComandas = comandasSnapshot.size + comandasFinalizadasSnapshot.size;
       const comandasFinalizadas = comandasFinalizadasSnapshot.size;
       const totalProdutosVendidos = vendasSnapshot.size;
 
       // Taxa de Conclusão: % de agendamentos concluídos com sucesso
-      const taxaConclusao = totalAgendamentos > 0 ? (agendamentosConcluidos - agendamentosCancelados) / totalAgendamentos * 100 : 0;
+      const taxaConclusao = totalAgendamentos > 0 
+        ? ((agendamentosConcluidos - agendamentosCancelados) / totalAgendamentos) * 100 
+        : 0;
 
       // Satisfação do Cliente: baseada em conclusões bem-sucedidas e baixo cancelamento
-      const taxaSucesso = totalAgendamentos > 0 ? (agendamentosConcluidos - agendamentosCancelados) / totalAgendamentos * 100 : 0;
-      const satisifacaoCliente = Math.min(100, taxaSucesso * 0.85 + 15);
+      const taxaSucesso = totalAgendamentos > 0 
+        ? ((agendamentosConcluidos - agendamentosCancelados) / totalAgendamentos) * 100 
+        : 0;
+      const satisfacaoCliente = Math.min(100, taxaSucesso * 0.85 + 15);
 
       // Eficiência Operacional: % de comandas finalizadas
-      const eficienciaOperacional = totalComandas > 0 ? comandasFinalizadas / totalComandas * 100 : 0;
+      const eficienciaOperacional = totalComandas > 0 
+        ? (comandasFinalizadas / totalComandas) * 100 
+        : 0;
 
       // Crescimento: baseado em produtos vendidos e agendamentos
       const fatorCrescimento = totalProdutosVendidos * 2 + agendamentosConcluidos * 1.5;
       const crescimentoVendas = Math.min(100, fatorCrescimento / Math.max(1, totalAgendamentos) * 10);
 
       // Engajamento: usuários ativos no período
-      const totalUsuarios = (await getDocs(collection(db, 'usuarios'))).size;
-      const engajamento = totalUsuarios > 0 ? Math.min(100, totalUsuariosAtivos / totalUsuarios * 100) : 0;
-      setPerformanceMetrics([{
-        subject: 'Conclusão',
-        A: Math.round(taxaConclusao),
-        fullMark: 100
-      }, {
-        subject: 'Satisfação',
-        A: Math.round(satisifacaoCliente),
-        fullMark: 100
-      }, {
-        subject: 'Eficiência',
-        A: Math.round(eficienciaOperacional),
-        fullMark: 100
-      }, {
-        subject: 'Crescimento',
-        A: Math.round(crescimentoVendas),
-        fullMark: 100
-      }, {
-        subject: 'Engajamento',
-        A: Math.round(engajamento),
-        fullMark: 100
-      }]);
+      const totalUsuarios = todosUsuariosSnapshot.size;
+      const engajamento = totalUsuarios > 0 
+        ? Math.min(100, (totalUsuariosAtivos / totalUsuarios) * 100) 
+        : 0;
+      
+      setPerformanceMetrics([
+        { subject: 'Conclusão', A: Math.round(taxaConclusao), fullMark: 100 },
+        { subject: 'Satisfação', A: Math.round(satisfacaoCliente), fullMark: 100 },
+        { subject: 'Eficiência', A: Math.round(eficienciaOperacional), fullMark: 100 },
+        { subject: 'Crescimento', A: Math.round(crescimentoVendas), fullMark: 100 },
+        { subject: 'Engajamento', A: Math.round(engajamento), fullMark: 100 }
+      ]);
     } catch (error) {
       console.error("Erro ao carregar dados do dashboard:", error);
     } finally {
@@ -520,32 +539,126 @@ export const AdminDashboard = ({
                   title="Clientes Recorrentes" 
                   value={statistics.topClientesRecorrentes.length.toString()} 
                   icon={<Repeat className="h-8 w-8 text-card-foreground" />} 
-                  description="Clique para ver top 10" 
-                  className="bg-gradient-to-br from-indigo-500/10 to-indigo-700/10 cursor-pointer hover:scale-105 transition-transform"
+                  description={`Clique para ver top ${topClientesLimit === -1 ? 'todos' : topClientesLimit}`} 
+                  className="bg-gradient-to-br from-indigo-500/10 to-indigo-700/10 cursor-pointer hover:scale-105 transition-transform" 
                 />
               </div>
             </HoverCardTrigger>
-            <HoverCardContent className="w-80 z-50" side="top">
-              <div className="space-y-2">
-                <h4 className="text-sm font-semibold mb-3">Top 10 Clientes Recorrentes</h4>
+            <HoverCardContent className="w-96 z-50 bg-background" side="top">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold">
+                    Top {topClientesLimit === -1 ? 'Todos os' : topClientesLimit} Clientes Recorrentes
+                  </h4>
+                </div>
+                
+                {/* Seletor de Top */}
+                <div className="space-y-2 pb-3 border-b">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Mostrar Top:
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      variant={topClientesLimit === 10 ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTopClientesLimit(10)}
+                      className="text-xs h-7"
+                    >
+                      Top 10
+                    </Button>
+                    <Button
+                      variant={topClientesLimit === 20 ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTopClientesLimit(20)}
+                      className="text-xs h-7"
+                    >
+                      Top 20
+                    </Button>
+                    <Button
+                      variant={topClientesLimit === 50 ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTopClientesLimit(50)}
+                      className="text-xs h-7"
+                    >
+                      Top 50
+                    </Button>
+                    <Button
+                      variant={topClientesLimit === -1 ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTopClientesLimit(-1)}
+                      className="text-xs h-7"
+                    >
+                      Todos
+                    </Button>
+                  </div>
+                  
+                  {/* Input personalizado */}
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="number"
+                      min="1"
+                      max="200"
+                      placeholder="Valor personalizado"
+                      value={customTopClientesLimit}
+                      onChange={(e) => setCustomTopClientesLimit(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && customTopClientesLimit) {
+                          const value = parseInt(customTopClientesLimit);
+                          if (value > 0 && value <= 200) {
+                            setTopClientesLimit(value);
+                          }
+                        }
+                      }}
+                      className="flex h-7 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (customTopClientesLimit) {
+                          const value = parseInt(customTopClientesLimit);
+                          if (value > 0 && value <= 200) {
+                            setTopClientesLimit(value);
+                          }
+                        }
+                      }}
+                      disabled={!customTopClientesLimit || parseInt(customTopClientesLimit) <= 0}
+                      className="text-xs h-7 whitespace-nowrap"
+                    >
+                      Aplicar
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Digite um valor entre 1 e 200 ou pressione Enter
+                  </p>
+                </div>
+
+                {/* Lista de clientes */}
                 {statistics.topClientesRecorrentes.length > 0 ? (
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {statistics.topClientesRecorrentes.map((cliente, index) => (
-                      <div key={cliente.email} className="flex items-center justify-between text-xs border-b pb-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="w-6 h-6 flex items-center justify-center p-0">
-                            {index + 1}
-                          </Badge>
-                          <div>
-                            <p className="font-medium">{cliente.nome}</p>
-                            <p className="text-muted-foreground text-[10px]">{cliente.email}</p>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {statistics.topClientesRecorrentes
+                      .slice(0, topClientesLimit === -1 ? undefined : topClientesLimit)
+                      .map((cliente, index) => (
+                        <div 
+                          key={cliente.email} 
+                          className="flex items-center justify-between text-xs border-b pb-2 last:border-b-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant="secondary" 
+                              className="w-6 h-6 flex items-center justify-center p-0"
+                            >
+                              {index + 1}
+                            </Badge>
+                            <div>
+                              <p className="font-medium">{cliente.nome}</p>
+                              <p className="text-muted-foreground text-[10px]">{cliente.email}</p>
+                            </div>
                           </div>
+                          <Badge className="bg-primary/10 text-primary">
+                            {cliente.quantidade} visitas
+                          </Badge>
                         </div>
-                        <Badge className="bg-primary/10 text-primary">
-                          {cliente.quantidade} visitas
-                        </Badge>
-                      </div>
-                    ))}
+                      ))}
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground text-center py-4">
@@ -557,18 +670,11 @@ export const AdminDashboard = ({
           </HoverCard>
 
           {/* Card Crescimento por Período */}
-          <StatsCard 
-            title="Crescimento no Período" 
-            value={`${statistics.crescimentoPorPeriodo >= 0 ? '+' : ''}${statistics.crescimentoPorPeriodo.toFixed(1)}%`} 
-            icon={<TrendingUp className="h-8 w-8 text-card-foreground" />} 
-            trend={{
-              value: statistics.crescimentoPorPeriodo,
-              positive: statistics.crescimentoPorPeriodo >= 0,
-              label: "vs período anterior"
-            }}
-            description="Comparado ao período anterior" 
-            className="bg-gradient-to-br from-cyan-500/10 to-cyan-700/10"
-          />
+          <StatsCard title="Crescimento no Período" value={`${statistics.crescimentoPorPeriodo >= 0 ? '+' : ''}${statistics.crescimentoPorPeriodo.toFixed(1)}%`} icon={<TrendingUp className="h-8 w-8 text-card-foreground" />} trend={{
+        value: statistics.crescimentoPorPeriodo,
+        positive: statistics.crescimentoPorPeriodo >= 0,
+        label: "vs período anterior"
+      }} description="Comparado ao período anterior" className="bg-gradient-to-br from-cyan-500/10 to-cyan-700/10" />
         </div>}
 
       {/* Gráficos com lazy loading */}
@@ -967,7 +1073,7 @@ export const AdminDashboard = ({
             <div className="mb-4">
               <div className="flex items-center gap-2">
                 <User className="h-5 w-5 text-primary" />
-                <h3 className="text-base sm:text-lg font-semibold">Profissionais Favoritos</h3>
+                <h3 className="text-base sm:text-lg font-semibold">Profissionais em Destaque</h3>
               </div>
               <p className="text-xs text-muted-foreground mt-1 ml-7">No Período Selecionado</p>
             </div>

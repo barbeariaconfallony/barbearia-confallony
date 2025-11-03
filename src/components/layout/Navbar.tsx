@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Menu, X, User, LogOut, Settings, ChevronDown, ChevronUp, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNavbar } from "@/contexts/NavbarContext";
 import { ThemeSelector } from "@/components/ThemeSelector";
 import { shouldShowFullscreenButton } from "@/utils/device-detection";
 import logoIcon from "@/assets/confallony-logo-icon.png";
@@ -18,7 +19,7 @@ const Navbar = () => {
   } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [localUserData, setLocalUserData] = useState<any>(null);
-  const [navbarVisible, setNavbarVisible] = useState(true);
+  const { navbarVisible, setNavbarVisible } = useNavbar();
   const [showFullscreen, setShowFullscreen] = useState(false);
   const navigate = useNavigate();
 

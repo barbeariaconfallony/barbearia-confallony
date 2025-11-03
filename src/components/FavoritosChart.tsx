@@ -62,14 +62,6 @@ export const FavoritosChart = ({
         dadosMes[servico.nome] = contagem;
       });
 
-      // Conta profissionais favoritos para este mês
-      profissionaisFavoritos.forEach(profissional => {
-        const contagem = atendimentosAnoAtual.filter(atendimento => isWithinInterval(atendimento.data_atendimento, {
-          start: inicioMes,
-          end: fimMes
-        }) && atendimento.funcionario_nome === profissional.nome).length;
-        dadosMes[profissional.nome] = contagem;
-      });
       return dadosMes;
     });
     return dados;
@@ -77,15 +69,14 @@ export const FavoritosChart = ({
 
   // Cores para as linhas (palette vibrante)
   const coresServicos = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))"];
-  const coresProfissionais = ["hsl(var(--chart-4))", "hsl(var(--chart-5))", "#9333ea"];
   return <div className="w-full h-full">
       <div className="flex items-center gap-2 mb-4">
         <TrendingUp className="h-5 w-5 text-primary" />
-        <h3 className="text-base sm:text-lg font-semibold">Serviços e Profissionais Favoritos ( Mensal )</h3>
+        <h3 className="text-base sm:text-lg font-semibold">Serviços Favoritos ( Mensal )</h3>
         <p className="text-xs text-muted-foreground ml-auto">Ano {new Date().getFullYear()} por mês</p>
       </div>
       
-      {servicosFavoritos.length === 0 && profissionaisFavoritos.length === 0 ? <div className="text-center py-12 border rounded-lg border-dashed">
+      {servicosFavoritos.length === 0 ? <div className="text-center py-12 border rounded-lg border-dashed">
           <TrendingUp className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground">
             Você ainda não tem dados suficientes para exibir o gráfico
@@ -105,10 +96,6 @@ export const FavoritosChart = ({
                 {servicosFavoritos.map((servico, index) => <linearGradient key={`gradient-servico-${servico.nome}`} id={`gradient-servico-${index}`} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={coresServicos[index % coresServicos.length]} stopOpacity={0.8} />
                     <stop offset="95%" stopColor={coresServicos[index % coresServicos.length]} stopOpacity={0.1} />
-                  </linearGradient>)}
-                {profissionaisFavoritos.map((profissional, index) => <linearGradient key={`gradient-profissional-${profissional.nome}`} id={`gradient-profissional-${index}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={coresProfissionais[index % coresProfissionais.length]} stopOpacity={0.8} />
-                    <stop offset="95%" stopColor={coresProfissionais[index % coresProfissionais.length]} stopOpacity={0.1} />
                   </linearGradient>)}
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} vertical={true} />
@@ -142,9 +129,6 @@ export const FavoritosChart = ({
               
               {/* Áreas dos serviços favoritos */}
               {servicosFavoritos.map((servico, index) => <Area key={`servico-${servico.nome}`} type="monotone" dataKey={servico.nome} stroke={coresServicos[index % coresServicos.length]} strokeWidth={2} fill={`url(#gradient-servico-${index})`} name={servico.nome} />)}
-              
-              {/* Áreas dos profissionais favoritos */}
-              {profissionaisFavoritos.map((profissional, index) => <Area key={`profissional-${profissional.nome}`} type="monotone" dataKey={profissional.nome} stroke={coresProfissionais[index % coresProfissionais.length]} strokeWidth={2} strokeDasharray="5 5" fill={`url(#gradient-profissional-${index})`} name={profissional.nome} />)}
             </AreaChart>
           </ResponsiveContainer>
         </div>}

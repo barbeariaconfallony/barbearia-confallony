@@ -230,15 +230,6 @@ const PixPagamento = () => {
 
       const docRef = await addDoc(collection(db, 'fila'), appointmentData);
 
-      // Notificar admins sobre novo agendamento
-      const { notifyAdminsNewQueue } = await import('@/utils/notify-admins');
-      notifyAdminsNewQueue({
-        clienteNome: bookingData.user.nome,
-        servicoNome: bookingData.service.nome,
-        dataAgendamento: appointmentDate,
-        appointmentId: docRef.id
-      }).catch(error => console.error('Erro ao notificar admins:', error));
-
       // Limpar localStorage
       localStorage.removeItem('bookingData');
 
