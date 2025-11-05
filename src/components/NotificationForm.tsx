@@ -28,7 +28,6 @@ export const NotificationForm = () => {
       setPermission(Notification.permission);
       
       navigator.serviceWorker.ready.then(() => {
-        console.log('NotificationForm: Service Worker pronto');
         setIsServiceWorkerReady(true);
       });
     }
@@ -51,8 +50,6 @@ export const NotificationForm = () => {
       type: 'UPDATE_CONFIG',
       config
     });
-    
-    console.log('NotificationForm: Config enviada ao SW', config);
   }, [title, message, siteName, imageUrl, autoSendEnabled, intervalMinutes, isServiceWorkerReady]);
   
   // Solicitar permissão

@@ -27,6 +27,11 @@ interface ConfigMobile {
   bonus_aniversario_prata: number;
   bonus_aniversario_ouro: number;
   bonus_aniversario_premium: number;
+  // Benefícios de Comandas por Nível (valor em R$)
+  comanda_bronze: number;
+  comanda_prata: number;
+  comanda_ouro: number;
+  comanda_premium: number;
   // Mensagens Personalizadas
   mensagem_boas_vindas: string;
   mensagem_bronze: string;
@@ -49,6 +54,10 @@ const defaultConfig: ConfigMobile = {
   bonus_aniversario_prata: 20,
   bonus_aniversario_ouro: 30,
   bonus_aniversario_premium: 50,
+  comanda_bronze: 0,
+  comanda_prata: 50,
+  comanda_ouro: 100,
+  comanda_premium: 150,
   mensagem_boas_vindas: "Bem-vindo ao nosso programa de fidelidade! A cada R$ 1,00 gasto, você ganha pontos.",
   mensagem_bronze: "Continue acumulando pontos para alcançar o nível Prata e ganhar mais benefícios!",
   mensagem_prata: "Parabéns! Você está no nível Prata. Continue assim para alcançar o Ouro!",
@@ -87,6 +96,10 @@ export const AdminConfigMobile = () => {
           bonus_aniversario_prata: data.bonus_aniversario_prata || 20,
           bonus_aniversario_ouro: data.bonus_aniversario_ouro || 30,
           bonus_aniversario_premium: data.bonus_aniversario_premium || 50,
+          comanda_bronze: data.comanda_bronze || 0,
+          comanda_prata: data.comanda_prata || 50,
+          comanda_ouro: data.comanda_ouro || 100,
+          comanda_premium: data.comanda_premium || 150,
           mensagem_boas_vindas: data.mensagem_boas_vindas || defaultConfig.mensagem_boas_vindas,
           mensagem_bronze: data.mensagem_bronze || defaultConfig.mensagem_bronze,
           mensagem_prata: data.mensagem_prata || defaultConfig.mensagem_prata,
@@ -123,6 +136,10 @@ export const AdminConfigMobile = () => {
         bonus_aniversario_prata: config.bonus_aniversario_prata,
         bonus_aniversario_ouro: config.bonus_aniversario_ouro,
         bonus_aniversario_premium: config.bonus_aniversario_premium,
+        comanda_bronze: config.comanda_bronze,
+        comanda_prata: config.comanda_prata,
+        comanda_ouro: config.comanda_ouro,
+        comanda_premium: config.comanda_premium,
         mensagem_boas_vindas: config.mensagem_boas_vindas,
         mensagem_bronze: config.mensagem_bronze,
         mensagem_prata: config.mensagem_prata,
@@ -309,14 +326,17 @@ export const AdminConfigMobile = () => {
             {/* Aba Benefícios */}
             <TabsContent value="beneficios" className="space-y-6 mt-6">
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Descontos por Nível */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Descontos por Nível (Serviços e Produtos) */}
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base flex items-center gap-2">
                         <Percent className="h-4 w-4" />
-                        Descontos por Nível
+                        Descontos Serviços/Produtos (%)
                       </CardTitle>
+                      <CardDescription className="text-xs">
+                        Aplicado sobre o valor de cada serviço/produto
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
@@ -391,8 +411,11 @@ export const AdminConfigMobile = () => {
                     <CardHeader>
                       <CardTitle className="text-base flex items-center gap-2">
                         <Gift className="h-4 w-4" />
-                        Bônus de Aniversário (pontos)
+                        Bônus Aniversário (pontos)
                       </CardTitle>
+                      <CardDescription className="text-xs">
+                        Pontos ganhos no aniversário
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
@@ -451,6 +474,85 @@ export const AdminConfigMobile = () => {
                             setConfig((prev) => ({
                               ...prev,
                               bonus_aniversario_premium: parseInt(e.target.value) || 0,
+                            }))
+                          }
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Benefícios de Comandas */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <CalendarIcon className="h-4 w-4" />
+                        Benefício Comandas (R$)
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Valor mínimo de comanda para ganhar benefício
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="comanda-bronze">Bronze (R$)</Label>
+                        <Input
+                          id="comanda-bronze"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={config.comanda_bronze}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              comanda_bronze: parseFloat(e.target.value) || 0,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="comanda-prata">Prata (R$)</Label>
+                        <Input
+                          id="comanda-prata"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={config.comanda_prata}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              comanda_prata: parseFloat(e.target.value) || 0,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="comanda-ouro">Ouro (R$)</Label>
+                        <Input
+                          id="comanda-ouro"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={config.comanda_ouro}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              comanda_ouro: parseFloat(e.target.value) || 0,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="comanda-premium">Premium (R$)</Label>
+                        <Input
+                          id="comanda-premium"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={config.comanda_premium}
+                          onChange={(e) =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              comanda_premium: parseFloat(e.target.value) || 0,
                             }))
                           }
                         />

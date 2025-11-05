@@ -201,8 +201,6 @@ export const AdminAniversariantes = ({ users }: AdminAniversariantesProps) => {
         const diffTime = aniversarioEsteAno.getTime() - hoje.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
-        console.log(`👤 ${user.nome}: data nascimento: ${user.data_nascimento}, aniversário este ano: ${aniversarioEsteAno.toLocaleDateString()}, diferença em dias: ${diffDays}`);
-        
         switch (filterPeriod) {
           case "hoje":
             return diffDays === 0;

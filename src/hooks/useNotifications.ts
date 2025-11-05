@@ -91,21 +91,8 @@ export const useNotifications = (userId?: string) => {
       description: options.body,
     });
 
-    console.log('🔔 [useNotifications] Tentando enviar notificação push...', { 
-      permission, 
-      isSupported, 
-      isMobileNative,
-      hasServiceWorker: 'serviceWorker' in navigator,
-      hasController: navigator.serviceWorker?.controller ? 'sim' : 'não'
-    });
-
     // 2. Se NÃO tiver permissão, apenas retornar (já mostrou o toast)
     if (permission !== 'granted' || !isSupported) {
-      console.log('⚠️ [useNotifications] Notificação push não enviada (sem permissão):', {
-        hasPermission: permission === 'granted',
-        isSupported,
-        permission
-      });
       return;
     }
 
@@ -113,7 +100,6 @@ export const useNotifications = (userId?: string) => {
     try {
       if (isMobileNative) {
         // ========== ANDROID NATIVO (LocalNotifications) ==========
-        console.log('📱 [useNotifications] Enviando notificação local (mobile Android)');
         await LocalNotifications.schedule({
           notifications: [
             {
@@ -128,19 +114,15 @@ export const useNotifications = (userId?: string) => {
             }
           ]
         });
-        console.log('✅ [useNotifications] Notificação Android enviada com sucesso');
       } else {
         // ========== WINDOWS/WEB (Web Notification API) ==========
-        console.log('🌐 [useNotifications] Enviando notificação web (Windows)');
         
         // Verificar se Service Worker está ativo e pronto
         if ('serviceWorker' in navigator) {
           const registration = await navigator.serviceWorker.ready;
-          console.log('🔧 [useNotifications] Service Worker ready:', registration);
           
           if (navigator.serviceWorker.controller) {
             // Usar Service Worker para notificações em background
-            console.log('🔧 [useNotifications] Usando Service Worker para notificação');
             
             // Enviar mensagem ao Service Worker
             navigator.serviceWorker.controller.postMessage({
@@ -153,11 +135,8 @@ export const useNotifications = (userId?: string) => {
                 requireInteraction: options.requireInteraction || false,
               }
             });
-            
-            console.log('✅ [useNotifications] Mensagem enviada ao Service Worker');
           } else {
             // Service Worker não está controlando a página ainda
-            console.log('⚠️ [useNotifications] Service Worker não está controlando a página, usando API direta');
             
             const notification = new Notification(options.title, {
               body: options.body,
@@ -172,12 +151,9 @@ export const useNotifications = (userId?: string) => {
                 notification.close();
               }, 5000);
             }
-            
-            console.log('✅ [useNotifications] Notificação enviada via API direta');
           }
         } else {
           // Navegador não suporta Service Workers
-          console.log('⚠️ [useNotifications] Service Worker não suportado, usando API direta');
           
           const notification = new Notification(options.title, {
             body: options.body,
@@ -192,8 +168,6 @@ export const useNotifications = (userId?: string) => {
               notification.close();
             }, 5000);
           }
-          
-          console.log('✅ [useNotifications] Notificação enviada via API direta (sem SW)');
         }
       }
     } catch (error) {

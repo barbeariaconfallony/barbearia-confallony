@@ -176,9 +176,6 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
       const cleanCardNumber = cardNumber.replace(/\s/g, '');
       const bin = cleanCardNumber.substring(0, 6);
 
-      console.log('Identificando método de pagamento com BIN:', bin);
-      console.log('Número completo do cartão (mascarado):', cleanCardNumber.substring(0, 6) + '******' + cleanCardNumber.substring(12));
-
       let paymentMethodId = cardType === 'credit_card' ? 'visa' : 'visa'; // default
       let issuerId: string | undefined;
 
@@ -186,12 +183,9 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
         // Tentar identificar o payment method baseado no BIN
         const paymentMethods = await window.MercadoPago.getPaymentMethods({ bin });
         
-        console.log('Resposta completa getPaymentMethods:', JSON.stringify(paymentMethods, null, 2));
-        
         if (paymentMethods && paymentMethods.results && paymentMethods.results.length > 0) {
           const paymentMethod = paymentMethods.results[0];
           paymentMethodId = paymentMethod.id;
-          console.log('Método de pagamento identificado:', paymentMethodId);
 
           // Tentar obter issuer
           try {
@@ -199,18 +193,15 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
               paymentMethodId: paymentMethodId, 
               bin 
             });
-            console.log('Resposta getIssuers:', issuersResponse);
             
             if (issuersResponse && issuersResponse.length > 0) {
               issuerId = issuersResponse[0].id;
-              console.log('Issuer ID identificado:', issuerId);
             }
           } catch (issuerError) {
             console.warn('Não foi possível identificar issuer, prosseguindo sem issuer_id:', issuerError);
           }
         } else {
           // Se não identificou, vamos tentar deduzir pela bandeira
-          console.warn('Cartão não identificado via API, tentando detectar bandeira manualmente...');
           
           // Detectar bandeira pelo BIN
           const firstDigit = cleanCardNumber.charAt(0);
@@ -246,8 +237,6 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
           } else if (['34', '37'].includes(firstTwoDigits)) {
             paymentMethodId = 'amex';
           }
-          
-          console.log('Bandeira detectada manualmente:', paymentMethodId, '(tipo:', cardType, ')');
         }
       } catch (error) {
         console.error('Erro ao identificar cartão, usando detecção manual:', error);
@@ -265,16 +254,12 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
         identificationType: 'CPF',
         identificationNumber: cpf.replace(/\D/g, '')
       };
-
-      console.log('Gerando card token...');
       
       const cardToken = await window.MercadoPago.createCardToken(cardData);
       
       if (!cardToken || !cardToken.id) {
         throw new Error('Falha ao gerar token do cartão');
       }
-
-      console.log('Card token gerado com sucesso:', cardToken.id);
 
       const paymentRequest: any = {
         firebase_uid: currentUser.uid, // Adicionar Firebase UID
@@ -297,16 +282,7 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
       // Adicionar issuer_id se foi identificado E for string válida
       if (issuerId && typeof issuerId === 'string' && issuerId.trim() !== '') {
         paymentRequest.issuer_id = issuerId;
-        console.log('Incluindo issuer_id na requisição:', issuerId);
-      } else {
-        console.log('Prosseguindo sem issuer_id (será determinado pelo Mercado Pago)');
       }
-
-      console.log('Criando pagamento com dados:', {
-        ...paymentRequest,
-        card_token: '[HIDDEN]',
-        payer: { email: paymentRequest.payer.email }
-      });
 
       const { data: result, error } = await supabase.functions.invoke('create-mercadopago-payment', {
         body: paymentRequest
@@ -334,8 +310,6 @@ export const CardPaymentForm: React.FC<CardPaymentFormProps> = ({
         }
         return;
       }
-
-      console.log('Resposta completa do pagamento:', result);
 
       if (result && result.status === 'approved') {
         toast({

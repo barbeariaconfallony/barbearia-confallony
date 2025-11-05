@@ -116,13 +116,11 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
   useEffect(() => {
     const loadAgendamentos = async () => {
       if (!userEmail) {
-        console.log("UltimosAgendamentos: Email não fornecido");
         setAgendamentos([]);
         setLoading(false);
         return;
       }
 
-      console.log("UltimosAgendamentos: Buscando agendamentos para:", userEmail);
       setLoading(true);
       try {
         // Buscar agendamentos concluídos do usuário (seguindo o mesmo padrão do UserDetailsModal)
@@ -131,13 +129,10 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
           where('usuario_email', '==', userEmail)
         );
         
-        console.log("UltimosAgendamentos: Executando query...");
         const concluidosSnapshot = await getDocs(concluidosQuery);
-        console.log("UltimosAgendamentos: Documentos encontrados:", concluidosSnapshot.docs.length);
         
         const agendamentosConcluidos = concluidosSnapshot.docs.map(doc => {
           const data = doc.data();
-          console.log("UltimosAgendamentos: Documento:", doc.id, data);
           return {
             id: doc.id,
             ...data,
@@ -152,7 +147,6 @@ export const UltimosAgendamentos = ({ userEmail, maxItems = 3, compact = false }
           .sort((a, b) => (b.data_conclusao?.getTime() || 0) - (a.data_conclusao?.getTime() || 0))
           .slice(0, maxItems);
 
-        console.log("UltimosAgendamentos: Agendamentos ordenados:", agendamentosOrdenados);
         setAgendamentos(agendamentosOrdenados);
       } catch (error) {
         console.error("UltimosAgendamentos: Erro ao carregar agendamentos:", error);

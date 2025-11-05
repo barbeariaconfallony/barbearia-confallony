@@ -79,8 +79,6 @@ export const PagamentoRestanteModal: React.FC<PagamentoRestanteModalProps> = ({
         payment_id_restante: paymentId || null
       });
 
-      console.log('✅ Pagamento parcial concluído. Agendamento mantido em atendimento.');
-
       toast({
         title: "Pagamento recebido! ✅",
         description: "O pagamento foi confirmado. Finalize o atendimento quando estiver pronto."

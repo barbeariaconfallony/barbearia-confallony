@@ -44,6 +44,42 @@ serve(async (req) => {
       )
     }
 
+    // Validar e formatar o valor da transação
+    const parsedAmount = Number(transaction_amount);
+    
+    if (isNaN(parsedAmount)) {
+      console.error('Valor inválido:', transaction_amount);
+      return new Response(
+        JSON.stringify({ error: 'Valor da transação inválido' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Validar valor mínimo para PIX
+    if (parsedAmount < 0.01) {
+      console.error('Valor abaixo do mínimo permitido para PIX:', parsedAmount);
+      return new Response(
+        JSON.stringify({ error: 'Valor mínimo para PIX é R$ 0,01' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Garantir formato correto do valor (número com 2 decimais)
+    const formattedAmount = Math.round(parsedAmount * 100) / 100;
+    
+    console.log('Valor processado:', { 
+      original: transaction_amount, 
+      parsed: parsedAmount,
+      formatted: formattedAmount,
+      type: typeof formattedAmount
+    });
+
     // Get access token from environment
     const accessToken = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN')
     if (!accessToken) {
@@ -61,16 +97,16 @@ serve(async (req) => {
 
     // Dados do pagamento
     const paymentData = {
-      transaction_amount: Number(transaction_amount),
-      description,
+      transaction_amount: formattedAmount,
+      description: String(description),
       payment_method_id: 'pix',
       payer: {
-        email: payer.email,
-        first_name: payer.first_name,
-        last_name: payer.last_name,
+        email: String(payer.email),
+        first_name: String(payer.first_name),
+        last_name: String(payer.last_name),
         identification: {
-          type: payer.identification.type,
-          number: payer.identification.number
+          type: String(payer.identification.type),
+          number: String(payer.identification.number)
         }
       }
     }

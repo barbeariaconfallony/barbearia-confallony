@@ -16,6 +16,10 @@ export interface ConfigMobile {
   bonus_aniversario_prata: number;
   bonus_aniversario_ouro: number;
   bonus_aniversario_premium: number;
+  comanda_bronze: number;
+  comanda_prata: number;
+  comanda_ouro: number;
+  comanda_premium: number;
   mensagem_boas_vindas: string;
   mensagem_bronze: string;
   mensagem_prata: string;
@@ -37,6 +41,10 @@ const defaultConfig: ConfigMobile = {
   bonus_aniversario_prata: 20,
   bonus_aniversario_ouro: 30,
   bonus_aniversario_premium: 50,
+  comanda_bronze: 0,
+  comanda_prata: 50,
+  comanda_ouro: 100,
+  comanda_premium: 150,
   mensagem_boas_vindas: "Bem-vindo ao nosso programa de fidelidade! A cada R$ 1,00 gasto, você ganha pontos.",
   mensagem_bronze: "Continue acumulando pontos para alcançar o nível Prata e ganhar mais benefícios!",
   mensagem_prata: "Parabéns! Você está no nível Prata. Continue assim para alcançar o Ouro!",
@@ -68,6 +76,10 @@ export const useConfigMobile = () => {
             bonus_aniversario_prata: data.bonus_aniversario_prata || 20,
             bonus_aniversario_ouro: data.bonus_aniversario_ouro || 30,
             bonus_aniversario_premium: data.bonus_aniversario_premium || 50,
+            comanda_bronze: data.comanda_bronze || 0,
+            comanda_prata: data.comanda_prata || 50,
+            comanda_ouro: data.comanda_ouro || 100,
+            comanda_premium: data.comanda_premium || 150,
             mensagem_boas_vindas: data.mensagem_boas_vindas || defaultConfig.mensagem_boas_vindas,
             mensagem_bronze: data.mensagem_bronze || defaultConfig.mensagem_bronze,
             mensagem_prata: data.mensagem_prata || defaultConfig.mensagem_prata,

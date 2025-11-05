@@ -265,7 +265,7 @@ Estamos te esperando! 😊`
               className="w-full flex items-center gap-2"
             >
               <MessageCircle className="h-4 w-4" />
-              Enviar WhatsApp
+              Enviar Mensagem no Whatsapp
             </Button>
 
             <Button

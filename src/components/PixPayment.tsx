@@ -2,19 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Copy, QrCode, CheckCircle, Clock, XCircle, ArrowLeft, User, Mail, CreditCard } from 'lucide-react';
+import { Copy, QrCode, CheckCircle, Clock, XCircle, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { format, parse } from 'date-fns';
+import { format } from 'date-fns';
 import type { BookingData } from './ServiceBooking';
-import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse, PaymentStatusResponse } from '@/types/mercadopago';
+import type { CreatePixPaymentRequest, MercadoPagoPaymentResponse } from '@/types/mercadopago';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { collection, addDoc, doc, getDoc, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { ClientDropdownSelector } from './ClientDropdownSelector';
 interface PixPaymentProps {
   bookingData: BookingData & {
     selectedService?: any;
@@ -89,7 +86,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     email: '',
     cpf: ''
   });
-  const [showUserForm, setShowUserForm] = useState(true);
+  const [isDataReady, setIsDataReady] = useState(false);
   const [currentPaymentId, setCurrentPaymentId] = useState<string | null>(null);
   const {
     toast
@@ -98,114 +95,33 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
   const {
     currentUser,
     userData: authUserData
-  } = useAuth(); // Obter usuário atual e seus dados
+  } = useAuth();
 
-  // Carregar dados salvos do localStorage ou do usuário autenticado
+  // Carregar dados do usuário autenticado uma única vez
   useEffect(() => {
-    console.log('PixPayment - bookingData:', bookingData);
-    console.log('PixPayment - selectedService:', bookingData.selectedService);
-    
-    // Se for pagamento restante, buscar dados do cliente da coleção usuarios
-    const isPaymentRestante = bookingData.service?.includes('Pagamento Restante');
-    console.log('PixPayment - isPaymentRestante:', isPaymentRestante);
-    
-    if (isPaymentRestante && bookingData.selectedService?.usuario_id) {
-      console.log('PixPayment - Buscando dados do usuário:', bookingData.selectedService.usuario_id);
-      
-      const fetchUserData = async () => {
-        try {
-          const userDoc = await getDoc(doc(db, 'usuarios', bookingData.selectedService.usuario_id));
-          console.log('PixPayment - userDoc exists:', userDoc.exists());
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            console.log('PixPayment - userData:', userData);
-            
-            const [firstName, ...lastNameParts] = (userData.nome || '').split(' ');
-            const lastName = lastNameParts.join(' ');
-            
-            const newUserData = {
-              firstName: firstName || '',
-              lastName: lastName || '',
-              email: userData.email || '',
-              cpf: userData.cpf || ''
-            };
-            
-            console.log('PixPayment - Setting userData:', newUserData);
-            setUserData(newUserData);
-            setShowUserForm(false);
-          } else {
-            console.error('Usuário não encontrado na coleção usuarios');
-            toast({
-              title: "Erro",
-              description: "Dados do cliente não encontrados.",
-              variant: "destructive"
-            });
-          }
-        } catch (error) {
-          console.error('Erro ao buscar dados do usuário:', error);
-          toast({
-            title: "Erro",
-            description: "Erro ao carregar dados do cliente.",
-            variant: "destructive"
-          });
-        }
-      };
-      fetchUserData();
-      return;
-    }
-
-    // Se for do mobile, usar dados do usuário autenticado
-    if (isFromMobile && authUserData) {
-      const [firstName, ...lastNameParts] = authUserData.nome.split(' ');
-      const lastName = lastNameParts.join(' ');
-      
-      setUserData({
-        firstName: firstName || '',
-        lastName: lastName || '',
-        email: authUserData.email || '',
-        cpf: authUserData.cpf || ''
+    // Verificar se temos dados do usuário autenticado
+    if (!authUserData) {
+      toast({
+        title: "Erro",
+        description: "Você precisa estar autenticado para gerar um pagamento PIX.",
+        variant: "destructive"
       });
-      setShowUserForm(false);
       return;
     }
 
-    // Caso contrário, carregar do localStorage (para booking-local)
-    const savedUserData = localStorage.getItem('pixUserData');
-    if (savedUserData) {
-      try {
-        const parsedData = JSON.parse(savedUserData);
-        setUserData(parsedData);
-        setShowUserForm(false);
-      } catch (error) {
-        console.error('Erro ao carregar dados do usuário:', error);
-      }
-    }
+    // Usar dados do usuário autenticado
+    const [firstName, ...lastNameParts] = (authUserData.nome || '').split(' ');
+    const lastName = lastNameParts.join(' ');
+    const newUserData = {
+      firstName: firstName || '',
+      lastName: lastName || '',
+      email: authUserData.email || '',
+      cpf: authUserData.cpf || ''
+    };
+    setUserData(newUserData);
+    setIsDataReady(true);
+  }, []); // Executar apenas uma vez ao montar
 
-    // Carregar paymentId salvo se existir
-    const savedPaymentId = localStorage.getItem('currentPaymentId');
-    if (savedPaymentId) {
-      setCurrentPaymentId(savedPaymentId);
-    }
-  }, [isFromMobile, authUserData, bookingData]);
-
-  // Salvar dados do usuário no localStorage
-  const saveUserDataToStorage = (data: UserData) => {
-    localStorage.setItem('pixUserData', JSON.stringify(data));
-  };
-  const handleInputChange = (field: keyof UserData, value: string) => {
-    setUserData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-  const formatCPF = (value: string) => {
-    const cleanValue = value.replace(/\D/g, '');
-    if (cleanValue.length <= 11) {
-      return cleanValue.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-    }
-    return cleanValue.slice(0, 14);
-  };
   const validateUserData = (): boolean => {
     const {
       firstName,
@@ -216,7 +132,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !cpf.trim()) {
       toast({
         title: "Dados incompletos",
-        description: "Preencha todos os campos obrigatórios.",
+        description: "Os dados do seu usuário estão incompletos. Por favor, atualize seu perfil.",
         variant: "destructive"
       });
       return false;
@@ -227,7 +143,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     if (!emailRegex.test(email)) {
       toast({
         title: "Email inválido",
-        description: "Digite um email válido.",
+        description: "O email do seu perfil é inválido. Por favor, atualize-o.",
         variant: "destructive"
       });
       return false;
@@ -238,7 +154,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     if (cleanCPF.length !== 11) {
       toast({
         title: "CPF inválido",
-        description: "O CPF deve ter 11 dígitos.",
+        description: "O CPF do seu perfil é inválido. Por favor, atualize-o.",
         variant: "destructive"
       });
       return false;
@@ -250,7 +166,6 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
   const savePaymentToSupabase = async (paymentData: any): Promise<boolean> => {
     // Verificar se Supabase está configurado antes de tentar salvar
     if (!isSupabaseConfigured()) {
-      console.log('Supabase não configurado - salvando dados localmente');
       // Salvar no localStorage como fallback
       try {
         const payments = JSON.parse(localStorage.getItem('payments') || '[]');
@@ -265,7 +180,6 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         return false;
       }
     }
-
     try {
       const {
         data,
@@ -288,7 +202,6 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         console.error('Erro ao salvar pagamento no Supabase:', error);
         return false;
       }
-      console.log('Pagamento salvo no Supabase:', data);
       return true;
     } catch (error) {
       console.error('Erro ao salvar pagamento:', error);
@@ -300,20 +213,15 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
   const updatePaymentStatusInSupabase = async (paymentId: string, status: string): Promise<boolean> => {
     // Verificar se Supabase está configurado antes de tentar atualizar
     if (!isSupabaseConfigured()) {
-      console.log('Supabase não configurado - atualizando dados localmente');
       // Atualizar no localStorage como fallback
       try {
         const payments = JSON.parse(localStorage.getItem('payments') || '[]');
-        const updatedPayments = payments.map((payment: any) => 
-          payment.external_reference === paymentId 
-            ? { 
-                ...payment, 
-                status: status,
-                updated_at: new Date().toISOString(),
-                approved_at: status === 'approved' ? new Date().toISOString() : payment.approved_at
-              }
-            : payment
-        );
+        const updatedPayments = payments.map((payment: any) => payment.external_reference === paymentId ? {
+          ...payment,
+          status: status,
+          updated_at: new Date().toISOString(),
+          approved_at: status === 'approved' ? new Date().toISOString() : payment.approved_at
+        } : payment);
         localStorage.setItem('payments', JSON.stringify(updatedPayments));
         return true;
       } catch (error) {
@@ -321,7 +229,6 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         return false;
       }
     }
-
     try {
       const {
         error
@@ -346,45 +253,31 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     try {
       // Verificar se é um pagamento restante (agendamento já existe)
       const isPaymentRestante = bookingData.service?.includes('Pagamento Restante');
-      
       if (isPaymentRestante && bookingData.serviceId) {
-        // É pagamento restante - finalizar o agendamento existente
-        console.log('Pagamento restante detectado, finalizando agendamento:', bookingData.serviceId);
-        
+        // É pagamento restante - atualizar o status na fila mas manter para avaliação
         const agendamentoRef = doc(db, 'fila', bookingData.serviceId);
         const agendamentoDoc = await getDoc(agendamentoRef);
-        
         if (!agendamentoDoc.exists()) {
           throw new Error('Agendamento não encontrado');
         }
-
         const agendamentoData = agendamentoDoc.data();
         const now = new Date();
 
-        // Criar documento em agendamentos_finalizados
-        const completedAppointment = {
-          ...agendamentoData,
-          status: 'concluido',
-          tempo_fim: agendamentoData.tempo_fim || now,
-          data_conclusao: now,
+        // Atualizar na fila marcando pagamento como pago, mas mantendo para avaliação
+        await updateDoc(agendamentoRef, {
           pagamento_parcial: 'pago',
+          status_restante: 'concluído',
           forma_pagamento_restante: 'PIX',
+          data_pagamento_restante: now,
           payment_id_restante: paymentId,
-          valor_total: agendamentoData.valor_total || agendamentoData.preco || 0,
-          valor_pago_inicial: (agendamentoData.valor_total || agendamentoData.preco || 0) / 3,
-          valor_pago_restante: bookingData.amount,
-        };
-
-        await addDoc(collection(db, 'agendamentos_finalizados'), completedAppointment);
-
-        // Remover da fila
-        await deleteDoc(agendamentoRef);
+          valor_parcial_restante: 0,
+          status: 'aguardando_avaliacao' // Novo status para indicar que precisa ser avaliado antes de finalizar
+        });
 
         toast({
-          title: "Pagamento concluído!",
-          description: "O atendimento foi finalizado com sucesso."
+          title: "Pagamento concluído! ✅",
+          description: "Avalie seu atendimento para finalizar."
         });
-        
         return true;
       }
 
@@ -395,15 +288,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
       if (bookingData.selectedDate && bookingData.selectedTime) {
         const [hours, minutes] = bookingData.selectedTime.split(':').map(Number);
         // Criar a data diretamente com os valores corretos
-        appointmentDate = new Date(
-          bookingData.selectedDate.getFullYear(),
-          bookingData.selectedDate.getMonth(),
-          bookingData.selectedDate.getDate(),
-          hours,
-          minutes,
-          0,
-          0
-        );
+        appointmentDate = new Date(bookingData.selectedDate.getFullYear(), bookingData.selectedDate.getMonth(), bookingData.selectedDate.getDate(), hours, minutes, 0, 0);
       } else {
         appointmentDate = new Date();
       }
@@ -417,7 +302,6 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
       const valorTotal = Number(bookingData.valor_total ?? bookingData.selectedService?.preco ?? bookingData.amount);
       const valorPago = Number(bookingData.valor_pago ?? bookingData.amount);
       const valorRestante = isPartial ? Math.max(0, valorTotal - valorPago) : 0;
-
       const newAppointment = {
         usuario_id: currentUser?.uid || 'pix_customer',
         usuario_nome: userName,
@@ -445,11 +329,10 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         valor_restante: valorRestante,
         valor_total: valorTotal,
         valor_pago: valorPago,
-        status_restante: isPartial ? 'pendente' : 'quitado',
+        status_restante: isPartial ? 'pendente' : 'quitado'
       };
       const docRef = await addDoc(collection(db, 'fila'), newAppointment);
       console.log('Agendamento salvo no Firestore:', newAppointment);
-      
       toast({
         title: "Agendamento confirmado!",
         description: "Seu agendamento foi salvo com sucesso na fila de atendimento."
@@ -465,19 +348,6 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
       return false;
     }
   };
-  const handleUserDataSubmit = () => {
-    if (validateUserData()) {
-      saveUserDataToStorage(userData);
-      setShowUserForm(false);
-      toast({
-        title: "Dados salvos!",
-        description: "Seus dados foram salvos com sucesso."
-      });
-    }
-  };
-  const editUserData = () => {
-    setShowUserForm(true);
-  };
   const createPixPayment = async () => {
     setLoading(true);
     try {
@@ -488,8 +358,18 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
       }
 
       // Dados do pagamento conforme documentação do Mercado Pago
+      const amount = Math.round(Number(bookingData.amount) * 100) / 100;
+      if (isNaN(amount) || amount < 0.01) {
+        toast({
+          variant: 'destructive',
+          title: 'Valor muito baixo para PIX',
+          description: 'O valor mínimo para pagamento PIX é R$ 0,01.'
+        });
+        setLoading(false);
+        return;
+      }
       const paymentRequest: CreatePixPaymentRequest = {
-        transaction_amount: bookingData.amount,
+        transaction_amount: amount,
         description: `Agendamento: ${bookingData.service} - ${bookingData.date} ${bookingData.time}`,
         payment_method_id: 'pix',
         payer: {
@@ -502,21 +382,18 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
           }
         }
       };
-      console.log('Enviando requisição para criar pagamento PIX');
-      console.log('Payload:', JSON.stringify(paymentRequest, null, 2));
-      
+
       // Usar supabase.functions.invoke ao invés de fetch direto
-      const { data, error: invokeError } = await supabase.functions.invoke('create-pix-payment', {
+      const {
+        data,
+        error: invokeError
+      } = await supabase.functions.invoke('create-pix-payment', {
         body: paymentRequest
       });
-
-      console.log('Resposta da função:', { data, error: invokeError });
-
       if (invokeError) {
         console.error('Erro ao invocar função:', invokeError);
         throw new Error(`Erro na API: ${invokeError.message || JSON.stringify(invokeError)}`);
       }
-
       if (!data) {
         throw new Error('Resposta vazia da API');
       }
@@ -526,10 +403,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         console.error('Erro retornado pela função:', data.error);
         throw new Error(`Erro da API: ${data.error}${data.details ? ' - ' + data.details : ''}`);
       }
-
       const result: MercadoPagoPaymentResponse = data;
-      console.log('Resposta recebida da API:', result);
-      console.log('Resposta completa da API:', result);
       const newPaymentData: PaymentData = {
         id: result.id.toString(),
         qr_code: result.point_of_interaction?.transaction_data?.qr_code || '',
@@ -595,30 +469,28 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
     }
   };
   const startPaymentStatusPolling = (paymentId: string) => {
-    console.log(`Iniciando verificação de status para pagamento: ${paymentId}`);
-
     // Polling a cada 5 segundos para verificar status
     const interval = setInterval(async () => {
       try {
         // Usar supabase client com URL correta
-        const { data: statusData, error } = await supabase.functions.invoke('check-payment-status', {
-          body: { paymentId }
+        const {
+          data: statusData,
+          error
+        } = await supabase.functions.invoke('check-payment-status', {
+          body: {
+            paymentId
+          }
         });
-        
         if (error) {
           console.error('Erro ao verificar status:', error);
           return;
         }
-
-        console.log('Status check response:', statusData);
-        
         if (statusData && statusData.status) {
           if (statusData.status !== paymentStatus) {
             setPaymentStatus(statusData.status);
 
             // Atualizar status no Supabase
             await updatePaymentStatusInSupabase(paymentId, statusData.status);
-            
             if (statusData.status === 'approved') {
               clearInterval(interval);
 
@@ -632,7 +504,6 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
 
                 // Redirecionar baseado na origem após 2 segundos
                 setTimeout(() => {
-                  console.log(`Redirecionando para: /${redirectTo}`);
                   navigate(`/${redirectTo}`);
                 }, 2000);
 
@@ -704,91 +575,19 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
         return null;
     }
   };
+  // Criar pagamento automaticamente quando os dados estiverem prontos
   useEffect(() => {
-    if (!showUserForm && userData.firstName && userData.lastName && userData.email && userData.cpf) {
+    if (isDataReady && userData.firstName && !paymentData && !loading) {
+      console.log('PixPayment - Criando pagamento automaticamente');
       createPixPayment();
     }
-  }, [showUserForm]);
-  if (showUserForm) {
+  }, [isDataReady]); // Executar apenas quando dados estiverem prontos
+  // Se ainda não temos os dados prontos, mostrar loading
+  if (!isDataReady) {
     return <Card className="w-full max-w-2xl mx-auto shadow-card">
-        <CardHeader className="text-center">
-          <CardTitle className="flex items-center justify-center gap-2">
-            <User className="w-6 h-6 text-primary" />
-            Seus Dados para Pagamento
-          </CardTitle>
-          <CardDescription>
-            Selecione um cliente cadastrado ou preencha seus dados pessoais para gerar o pagamento PIX
-          </CardDescription>
-        </CardHeader>
-        
-        <CardContent className="space-y-4">
-          {/* Mostrar seleção de cliente apenas no booking-local e se não for pagamento restante */}
-          {!isFromMobile && !bookingData.service?.includes('Pagamento Restante') && (
-            <>
-              <div className="space-y-4">
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-medium mb-4">Selecionar Cliente Cadastrado (Recomendado)</h4>
-                  <ClientDropdownSelector
-                    onClientSelected={(clienteData) => {
-                      setUserData({
-                        firstName: clienteData.nome.split(' ')[0] || '',
-                        lastName: clienteData.nome.split(' ').slice(1).join(' ') || '',
-                        email: clienteData.email,
-                        cpf: clienteData.cpf
-                      });
-                    }}
-                    label="Cliente:"
-                    placeholder="Escolha um cliente cadastrado"
-                  />
-                </div>
-                
-                <div className="text-center text-muted-foreground">
-                  <span>ou preencha manualmente abaixo</span>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Formulário de dados pessoais */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">Nome *</Label>
-              <Input id="firstName" value={userData.firstName} onChange={e => handleInputChange('firstName', e.target.value)} placeholder="Seu primeiro nome" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Sobrenome *</Label>
-              <Input id="lastName" value={userData.lastName} onChange={e => handleInputChange('lastName', e.target.value)} placeholder="Seu sobrenome" required />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="email" className="flex items-center gap-2">
-              <Mail className="w-4 h-4" />
-              Email *
-            </Label>
-            <Input id="email" type="email" value={userData.email} onChange={e => handleInputChange('email', e.target.value)} placeholder="seu@email.com" required />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cpf" className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4" />
-              CPF *
-            </Label>
-            <Input id="cpf" value={userData.cpf} onChange={e => handleInputChange('cpf', formatCPF(e.target.value))} placeholder="000.000.000-00" maxLength={14} required />
-            <p className="text-xs text-muted-foreground">
-              * Campos obrigatórios para processamento do PIX
-            </p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button onClick={onBack} variant="outline" className="flex-1">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Voltar
-            </Button>
-            <Button onClick={handleUserDataSubmit} className="flex-1">
-              Salvar e Gerar PIX
-            </Button>
-          </div>
+        <CardContent className="flex flex-col items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+          <p className="text-muted-foreground">Carregando seus dados...</p>
         </CardContent>
       </Card>;
   }
@@ -851,17 +650,7 @@ export const PixPayment: React.FC<PixPaymentProps> = ({
   }
   return <Card className="w-full max-w-2xl mx-auto shadow-card bg-gradient-card">
       <CardHeader className="text-center">
-        <div className="flex items-center justify-between">
-          <Button onClick={onBack} variant="ghost" size="sm">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar
-          </Button>
-          {getStatusBadge()}
-          <Button onClick={editUserData} variant="ghost" size="sm">
-            <User className="w-4 h-4" />
-            Editar Dados
-          </Button>
-        </div>
+        
         <CardTitle className="text-2xl font-bold text-foreground flex items-center justify-center gap-2">
           <QrCode className="w-6 h-6 text-primary" />
           Pagamento Pix

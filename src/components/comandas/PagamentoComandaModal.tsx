@@ -115,7 +115,7 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
   // Tocar som quando pagamento for aprovado
   const playApprovalSound = () => {
     if (audioRef.current) {
-      audioRef.current.play().catch(err => console.log('Erro ao tocar som:', err));
+      audioRef.current.play().catch(err => {});
     }
   };
 
@@ -206,8 +206,19 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
     
     setLoading(true);
     try {
+      const amount = Math.round(Number(comanda.total) * 100) / 100;
+      if (isNaN(amount) || amount < 0.01) {
+        toast({
+          variant: 'destructive',
+          title: 'Valor muito baixo para PIX',
+          description: 'O valor mínimo para pagamento PIX é R$ 0,01.'
+        });
+        setLoading(false);
+        return;
+      }
+
       const paymentRequest: CreatePixPaymentRequest = {
-        transaction_amount: comanda.total,
+        transaction_amount: amount,
         description: `Comanda #${comanda.numero} - ${comanda.cliente_nome}`,
         payment_method_id: 'pix',
         payer: {
@@ -220,15 +231,11 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
           }
         }
       };
-
-      console.log('Enviando requisição para criar pagamento PIX:', paymentRequest);
       
       // Usar supabase.functions.invoke ao invés de fetch direto
       const { data, error: invokeError } = await supabase.functions.invoke('create-pix-payment', {
         body: paymentRequest
       });
-
-      console.log('Resposta da função:', { data, error: invokeError });
 
       if (invokeError) {
         console.error('Erro ao invocar função:', invokeError);
@@ -280,8 +287,6 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
 
   // Polling para verificar status do pagamento (igual ao PixPayment)
   const startPaymentStatusPolling = (paymentId: string) => {
-    console.log(`Iniciando verificação de status para pagamento: ${paymentId}`);
-
     const interval = setInterval(async () => {
       try {
         const { data: statusData, error } = await supabase.functions.invoke('check-payment-status', {
@@ -292,8 +297,6 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
           console.error('Erro ao verificar status:', error);
           return;
         }
-
-        console.log('Status check response:', statusData);
 
         if (statusData && statusData.status) {
           if (statusData.status !== paymentStatus) {
@@ -334,7 +337,6 @@ export const PagamentoComandaModal: React.FC<PagamentoComandaModalProps> = ({
     // Limpar o interval após 10 minutos (600 segundos)
     setTimeout(() => {
       clearInterval(interval);
-      console.log('Polling de status encerrado após 10 minutos');
     }, 600000);
   };
 

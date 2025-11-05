@@ -264,8 +264,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setLoading(true);
     try {
       const itemsDescription = cartItems.map(item => `${item.nome} (${item.quantity}x)`).join(', ');
+      const amount = Math.round(Number(total) * 100) / 100;
+      if (isNaN(amount) || amount < 0.01) {
+        toast({
+          variant: 'destructive',
+          title: 'Valor muito baixo para PIX',
+          description: 'O valor mínimo para pagamento PIX é R$ 0,01.'
+        });
+        setLoading(false);
+        return;
+      }
       const paymentRequest: CreatePixPaymentRequest = {
-        transaction_amount: total,
+        transaction_amount: amount,
         description: `Compra de produtos: ${itemsDescription}`,
         payment_method_id: 'pix',
         payer: {
